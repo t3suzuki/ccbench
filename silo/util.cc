@@ -114,16 +114,7 @@ void partTableInit([[maybe_unused]] size_t thid, uint64_t start, uint64_t end) {
     tmp->val_[1] = '\0';
 
 #if MASSTREE_USE
-#if COROBASE
-    PROMISE(void) coro_task;
-    coro_task = MT.insert_value(i, tmp);
-    coro_task.start();
-    while(!coro_task.done()) {
-        coro_task.resume();
-    }
-#else
     MT.insert_value(i, tmp);
-#endif
 #endif
   }
 }

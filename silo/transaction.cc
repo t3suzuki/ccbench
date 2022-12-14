@@ -107,14 +107,13 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
    */
   Tuple *tuple;
 #if MASSTREE_USE
-  AWAIT MT.get_value(key, tuple);
+  AWAIT MT.get_value_coro(key, tuple);
 #if ADD_ANALYSIS
   ++sres_->local_tree_traversal_;
 #endif
 #else
   tuple = get_tuple(Table, key);
 #endif
-
   //(a) reads the TID word, spinning until the lock is clear
 
   expected.obj_ = loadAcquire(tuple->tidword_.obj_);
@@ -307,7 +306,7 @@ PROMISE(void) TxnExecutor::write(std::uint64_t key, std::string_view val) {
     tuple = re->rcdptr_;
   } else {
 #if MASSTREE_USE
-    AWAIT MT.get_value(key, tuple);
+    AWAIT MT.get_value_coro(key, tuple);
 #if ADD_ANALYSIS
     ++sres_->local_tree_traversal_;
 #endif

@@ -36,12 +36,13 @@
 
 using namespace std;
 
-PROMISE(void) corobase_work(size_t thid, int i_coro, TxnExecutor &trans, FastZipf &zipf,
+PROMISE(void) corobase_work(size_t thid, int i_coro, FastZipf &zipf,
 			    Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
 			    uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
 			    int &n_done, bool &done_coro)
 {
   while (!loadAcquire(quit)) {
+    TxnExecutor trans(thid, (Result *) &myres);
 #if PARTITION_TABLE
     makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
                   FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
@@ -213,7 +214,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   PROMISE(void) coro[N_CORO];
   for (int i_coro=0; i_coro<N_CORO; i_coro++) {
     done[i_coro] = false;
-    coro[i_coro] = corobase_work(thid, i_coro, trans, zipf, rnd, myres,
+    coro[i_coro] = corobase_work(thid, i_coro, zipf, rnd, myres,
 				 quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
     coro[i_coro].start();
   }
@@ -235,7 +236,7 @@ thread_local tcalloc coroutine_allocator;
 
 int main(int argc, char *argv[]) try {
 #if COROBASE
-  printf("use CoroBase.\n");
+  printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
 #else
   printf("use original.\n");
 #endif

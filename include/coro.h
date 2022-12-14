@@ -354,11 +354,31 @@ private:
 };
 
 
+inline unsigned long long my_rdtsc() {
+    unsigned long long ret;
+    __asm__ volatile ("rdtsc" : "=A" (ret));
+    return ret;
+}
+
 #if COROBASE
   #define PROMISE(t) task<t>
   #define RETURN co_return
   #define AWAIT co_await
-  #define SUSPEND co_await std::experimental::suspend_always{}
+#if TR_US
+#define TSC_US (3000)
+#define SUSPEND do {                                                 \
+    unsigned long long tsc0, tsc1;                                              \
+    tsc0 = __rdtsc();                                                  \
+    while (1) {                                                         \
+      tsc1 = __rdtsc();                                                        \
+      if (tsc1 - tsc0 > TR_US * TSC_US)                                 \
+        break;                                                          \
+      co_await std::experimental::suspend_always{};                     \
+    }                                                                   \
+  } while (0);
+#else
+#define SUSPEND co_await std::experimental::suspend_always{}
+#endif
 #else
   #define PROMISE(t) t
   #define RETURN return

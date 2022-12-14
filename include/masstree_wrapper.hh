@@ -94,32 +94,31 @@ public:
                     .c_str());
   }
 
-  inline PROMISE(bool) insert_value(std::string_view key, T *value) {
+  void insert_value(std::string_view key, T *value) {
     cursor_type lp(table_, key.data(), key.size());
-    bool found = AWAIT lp.find_insert(*ti);
+    bool found = lp.find_insert(*ti);
     // always_assert(!found, "keys should all be unique");
     if (found) {
       // release lock of existing nodes meaning the first arg equals 0
       lp.finish(0, *ti);
       // return
-      RETURN true;
+      return;
     }
     lp.value() = value;
     fence();
     lp.finish(1, *ti);
-    RETURN true;
+    return;
   }
 
-  inline PROMISE(void) insert_value(std::uint64_t key, T *value) {
+  void insert_value(std::uint64_t key, T *value) {
     std::uint64_t key_buf{__builtin_bswap64(key)};
-    AWAIT insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
-    RETURN;
+    insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
   }
 
   using value_ptr_t = T *;
-  inline PROMISE(bool) get_value(std::string_view key, value_ptr_t &value_ptr) {
+  inline PROMISE(bool) get_value_coro(std::string_view key, value_ptr_t &value_ptr) {
     unlocked_cursor_type lp(table_, key.data(), key.size());
-    bool found = AWAIT lp.find_unlocked(*ti);
+    bool found = AWAIT lp.find_unlocked_coro(*ti);
     if (found) {
       value_ptr = lp.value();
     } else {
@@ -131,12 +130,26 @@ public:
     RETURN found;
   }
 
-  inline PROMISE(bool) get_value(std::uint64_t key, value_ptr_t &value_ptr) {
+  inline PROMISE(bool) get_value_coro(std::uint64_t key, value_ptr_t &value_ptr) {
     std::uint64_t key_buf{__builtin_bswap64(key)};
-    bool found = AWAIT get_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
+    bool found = AWAIT get_value_coro({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
     RETURN found;
   }
 
+  inline T * get_value(std::string_view key) {
+    unlocked_cursor_type lp(table_, key.data(), key.size());
+    bool found = lp.find_unlocked(*ti);
+    if (found) {
+      return lp.value();
+    }
+    return nullptr;
+  }
+
+  inline T * get_value(std::uint64_t key) {
+    std::uint64_t key_buf{__builtin_bswap64(key)};
+    return get_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)});
+  }
+  
   static inline std::atomic<bool> stopping{};
   static inline std::atomic<std::uint32_t> printing{};
 
