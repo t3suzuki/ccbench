@@ -96,6 +96,8 @@ RETRY:
       goto RETRY;
     }
   }
+  n_done++;
+  done_coro = true;
   RETURN;
 }
 

@@ -110,9 +110,10 @@ public:
     RETURN true;
   }
 
-  inline void insert_value(std::uint64_t key, T *value) {
+  inline PROMISE(void) insert_value(std::uint64_t key, T *value) {
     std::uint64_t key_buf{__builtin_bswap64(key)};
-    insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
+    AWAIT insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
+    RETURN;
   }
 
   using value_ptr_t = T *;
@@ -122,6 +123,9 @@ public:
     if (found) {
       value_ptr = lp.value();
     } else {
+      printf("something wrong?\n");
+      std::cout << key << std::endl;
+      exit(2);
       value_ptr = nullptr;
     }
     RETURN found;
