@@ -32,7 +32,134 @@
 #include "../include/util.hh"
 #include "../include/zipf.hh"
 
+#include "../include/coro.h"
+
 using namespace std;
+
+PROMISE(void) corobase_work(size_t thid, int i_coro, TxnExecutor &trans, FastZipf &zipf,
+			    Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
+			    uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
+			    int &n_done, bool &done_coro)
+{
+  while (!loadAcquire(quit)) {
+#if PARTITION_TABLE
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
+                  thid, myres);
+#else
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, false,
+                  thid, myres);
+#endif
+
+#if PROCEDURE_SORT
+    sort(trans.pro_set_.begin(), trans.pro_set_.end());
+#endif
+
+RETRY:
+    if (thid == 0) {
+      leaderWork(epoch_timer_start, epoch_timer_stop);
+#if BACK_OFF
+      leaderBackoffWork(backoff, SiloResult);
+#endif
+      // printf("Thread #%d: on CPU %d\n", thid, sched_getcpu());
+    }
+    
+    if (loadAcquire(quit)) break;
+    
+    trans.begin();
+    for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
+         ++itr) {
+      if ((*itr).ope_ == Ope::READ) {
+        AWAIT trans.read((*itr).key_);
+      } else if ((*itr).ope_ == Ope::WRITE) {
+        AWAIT trans.write((*itr).key_);
+      } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
+        AWAIT trans.read((*itr).key_);
+        AWAIT trans.write((*itr).key_);
+      } else {
+        ERR;
+      }
+    }
+
+    if (trans.validationPhase()) {
+      trans.writePhase();
+      /**
+       * local_commit_counts is used at ../include/backoff.hh to calcurate about
+       * backoff.
+       */
+      storeRelease(myres.local_commit_counts_,
+                   loadAcquire(myres.local_commit_counts_) + 1);
+    } else {
+      trans.abort();
+      ++myres.local_abort_counts_;
+      goto RETRY;
+    }
+  }
+  RETURN;
+}
+
+
+void original_work(size_t thid, TxnExecutor &trans, FastZipf &zipf,
+		   Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
+		   uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop)
+{
+  while (!loadAcquire(quit)) {
+#if PARTITION_TABLE
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
+                  thid, myres);
+#else
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, false,
+                  thid, myres);
+#endif
+
+#if PROCEDURE_SORT
+    sort(trans.pro_set_.begin(), trans.pro_set_.end());
+#endif
+
+RETRY:
+    if (thid == 0) {
+      leaderWork(epoch_timer_start, epoch_timer_stop);
+#if BACK_OFF
+      leaderBackoffWork(backoff, SiloResult);
+#endif
+      // printf("Thread #%d: on CPU %d\n", thid, sched_getcpu());
+    }
+    
+    if (loadAcquire(quit)) break;
+
+    trans.begin();
+    for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
+         ++itr) {
+      if ((*itr).ope_ == Ope::READ) {
+        trans.read((*itr).key_);
+      } else if ((*itr).ope_ == Ope::WRITE) {
+        trans.write((*itr).key_);
+      } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
+        trans.read((*itr).key_);
+        trans.write((*itr).key_);
+      } else {
+        ERR;
+      }
+    }
+
+    if (trans.validationPhase()) {
+      trans.writePhase();
+      /**
+       * local_commit_counts is used at ../include/backoff.hh to calcurate about
+       * backoff.
+       */
+      storeRelease(myres.local_commit_counts_,
+                   loadAcquire(myres.local_commit_counts_) + 1);
+    } else {
+      trans.abort();
+      ++myres.local_abort_counts_;
+      goto RETRY;
+    }
+  }
+}
 
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   Result &myres = std::ref(SiloResult[thid]);
@@ -77,68 +204,39 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   storeRelease(ready, 1);
   while (!loadAcquire(start)) _mm_pause();
   if (thid == 0) epoch_timer_start = rdtscp();
-  while (!loadAcquire(quit)) {
-#if PARTITION_TABLE
-    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
-                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
-                  thid, myres);
-#else
-    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
-                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, false,
-                  thid, myres);
-#endif
 
-#if PROCEDURE_SORT
-    sort(trans.pro_set_.begin(), trans.pro_set_.end());
-#endif
-
-RETRY:
-    if (thid == 0) {
-      leaderWork(epoch_timer_start, epoch_timer_stop);
-#if BACK_OFF
-      leaderBackoffWork(backoff, SiloResult);
-#endif
-      // printf("Thread #%d: on CPU %d\n", thid, sched_getcpu());
-    }
-
-    if (loadAcquire(quit)) break;
-
-    trans.begin();
-    for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
-         ++itr) {
-      if ((*itr).ope_ == Ope::READ) {
-        trans.read((*itr).key_);
-      } else if ((*itr).ope_ == Ope::WRITE) {
-        trans.write((*itr).key_);
-      } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
-        trans.read((*itr).key_);
-        trans.write((*itr).key_);
-      } else {
-        ERR;
-      }
-    }
-
-    if (trans.validationPhase()) {
-      trans.writePhase();
-      /**
-       * local_commit_counts is used at ../include/backoff.hh to calcurate about
-       * backoff.
-       */
-      storeRelease(myres.local_commit_counts_,
-                   loadAcquire(myres.local_commit_counts_) + 1);
-    } else {
-      trans.abort();
-      ++myres.local_abort_counts_;
-      goto RETRY;
-    }
+#if COROBASE
+  int n_done = 0;
+  bool done[N_CORO];
+  PROMISE(void) coro[N_CORO];
+  for (int i_coro=0; i_coro<N_CORO; i_coro++) {
+    done[i_coro] = false;
+    coro[i_coro] = corobase_work(thid, i_coro, trans, zipf, rnd, myres,
+				 quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
+    coro[i_coro].start();
   }
 
+  do {
+    for (int i_coro=0; i_coro<N_CORO; i_coro++) {
+      if (!done[i_coro])
+        coro[i_coro].resume();
+    }
+  } while (n_done != N_CORO);
+#else
+  original_work(thid, trans, zipf, rnd, myres,
+		quit, epoch_timer_start, epoch_timer_stop);
+#endif
   return;
 }
 
 thread_local tcalloc coroutine_allocator;
 
 int main(int argc, char *argv[]) try {
+#if COROBASE
+  printf("use CoroBase.\n");
+#else
+  printf("use original.\n");
+#endif
   //gflags::SetUsageMessage("Silo benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();

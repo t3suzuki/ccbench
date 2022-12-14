@@ -107,7 +107,7 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
    */
   Tuple *tuple;
 #if MASSTREE_USE
-  tuple = AWAIT MT.get_value(key);
+  AWAIT MT.get_value(key, tuple);
 #if ADD_ANALYSIS
   ++sres_->local_tree_traversal_;
 #endif
@@ -307,7 +307,7 @@ PROMISE(void) TxnExecutor::write(std::uint64_t key, std::string_view val) {
     tuple = re->rcdptr_;
   } else {
 #if MASSTREE_USE
-    tuple = AWAIT MT.get_value(key);
+    AWAIT MT.get_value(key, tuple);
 #if ADD_ANALYSIS
     ++sres_->local_tree_traversal_;
 #endif

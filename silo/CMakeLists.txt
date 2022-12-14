@@ -114,5 +114,6 @@ else ()
 endif ()
 
 
-add_definitions(-DADV_CORO=0)
+add_definitions(-DCOROBASE=1)
+add_definitions(-DN_CORO=1)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fcoroutines-ts -stdlib=libc++")

@@ -354,7 +354,7 @@ private:
 };
 
 
-#if 1
+#if COROBASE
   #define PROMISE(t) task<t>
   #define RETURN co_return
   #define AWAIT co_await
