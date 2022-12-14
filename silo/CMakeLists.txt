@@ -35,17 +35,14 @@ file(GLOB REPLAY_SOURCES
         "replayTest.cc"
         )
 
-add_executable(silo.exe ${SILO_SOURCES})
-add_executable(replay_test.exe ${REPLAY_SOURCES})
-
-target_link_libraries(silo.exe
-  numa
+set(SILO_LIBS
+        numa
         Boost::filesystem
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
         ${PROJECT_SOURCE_DIR}/../third_party/masstree/libkohler_masstree_json.a
         Threads::Threads
-        )
+	)
 
 if (DEFINED ADD_ANALYSIS)
     add_definitions(-DADD_ANALYSIS=${ADD_ANALYSIS})
@@ -114,7 +111,15 @@ else ()
 endif ()
 
 
+
 add_definitions(-DCOROBASE=1)
-add_definitions(-DN_CORO=64)
-add_definitions(-DTR_US=1)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
+
+
+foreach(TR_US 1 4 16 64)
+  foreach(N_CORO 1 2 4 8 16 32 64 128 256 512)
+    add_executable(silo_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
+    set_target_properties(silo_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DTR_US=${TR_US} -DN_CORO=${N_CORO}")
+    target_link_libraries(silo_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+  endforeach()
+endforeach()
