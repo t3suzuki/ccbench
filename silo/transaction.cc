@@ -87,7 +87,7 @@ void TxnExecutor::lockWriteSet() {
   }
 }
 
-void TxnExecutor::read(std::uint64_t key) {
+PROMISE(void) TxnExecutor::read(std::uint64_t key) {
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
 #endif
@@ -107,7 +107,7 @@ void TxnExecutor::read(std::uint64_t key) {
    */
   Tuple *tuple;
 #if MASSTREE_USE
-  tuple = MT.get_value(key);
+  tuple = AWAIT MT.get_value(key);
 #if ADD_ANALYSIS
   ++sres_->local_tree_traversal_;
 #endif
@@ -157,7 +157,7 @@ FINISH_READ:
 #if ADD_ANALYSIS
   sres_->local_read_latency_ += rdtscp() - start;
 #endif
-  return;
+  RETURN;
 }
 
 void tx_delete([[maybe_unused]]std::uint64_t key) {
@@ -290,7 +290,7 @@ void TxnExecutor::wal(std::uint64_t ctid) {
   }
 }
 
-void TxnExecutor::write(std::uint64_t key, std::string_view val) {
+PROMISE(void) TxnExecutor::write(std::uint64_t key, std::string_view val) {
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
 #endif
@@ -307,7 +307,7 @@ void TxnExecutor::write(std::uint64_t key, std::string_view val) {
     tuple = re->rcdptr_;
   } else {
 #if MASSTREE_USE
-    tuple = MT.get_value(key);
+    tuple = AWAIT MT.get_value(key);
 #if ADD_ANALYSIS
     ++sres_->local_tree_traversal_;
 #endif
@@ -323,7 +323,7 @@ FINISH_WRITE:
 #if ADD_ANALYSIS
   sres_->local_write_latency_ += rdtscp() - start;
 #endif
-  return;
+  RETURN;
 }
 
 void TxnExecutor::writePhase() {

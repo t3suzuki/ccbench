@@ -136,8 +136,10 @@ RETRY:
   return;
 }
 
+thread_local tcalloc coroutine_allocator;
+
 int main(int argc, char *argv[]) try {
-  gflags::SetUsageMessage("Silo benchmark.");
+  //gflags::SetUsageMessage("Silo benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
   makeDB();

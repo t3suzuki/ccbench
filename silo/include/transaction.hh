@@ -73,7 +73,7 @@ public:
    * @brief Transaction read function.
    * @param [in] key The key of key-value
    */
-  void read(std::uint64_t key);
+  PROMISE(void) read(std::uint64_t key);
 
   /**
    * @brief Search xxx set
@@ -109,7 +109,7 @@ public:
    * @brief Transaction write function.
    * @param [in] key The key of key-value
    */
-  void write(std::uint64_t key, std::string_view val = "");
+  PROMISE(void) write(std::uint64_t key, std::string_view val = "");
 
   void writePhase();
 };

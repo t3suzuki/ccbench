@@ -93,20 +93,20 @@ public:
                     .c_str());
   }
 
-  void insert_value(std::string_view key, T *value) {
+  PROMISE(void) insert_value(std::string_view key, T *value) {
     cursor_type lp(table_, key.data(), key.size());
-    bool found = lp.find_insert(*ti);
+    bool found = AWAIT lp.find_insert(*ti);
     // always_assert(!found, "keys should all be unique");
     if (found) {
       // release lock of existing nodes meaning the first arg equals 0
       lp.finish(0, *ti);
       // return
-      return;
+      RETURN;
     }
     lp.value() = value;
     fence();
     lp.finish(1, *ti);
-    return;
+    RETURN;
   }
 
   void insert_value(std::uint64_t key, T *value) {
@@ -114,18 +114,19 @@ public:
     insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
   }
 
-  T *get_value(std::string_view key) {
+  PROMISE(T *) get_value(std::string_view key) {
     unlocked_cursor_type lp(table_, key.data(), key.size());
-    bool found = lp.find_unlocked(*ti);
+    bool found = AWAIT lp.find_unlocked(*ti);
     if (found) {
-      return lp.value();
+      RETURN lp.value();
     }
-    return nullptr;
+    RETURN nullptr;
   }
 
-  T *get_value(std::uint64_t key) {
+  PROMISE(T *) get_value(std::uint64_t key) {
     std::uint64_t key_buf{__builtin_bswap64(key)};
-    return get_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)});
+    T *v = AWAIT get_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)});
+    RETURN v;
   }
 
   static inline std::atomic<bool> stopping{};

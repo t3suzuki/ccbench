@@ -39,6 +39,7 @@ add_executable(silo.exe ${SILO_SOURCES})
 add_executable(replay_test.exe ${REPLAY_SOURCES})
 
 target_link_libraries(silo.exe
+  numa
         Boost::filesystem
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
@@ -111,3 +112,7 @@ if (DEFINED WAL)
 else ()
     add_definitions(-DWAL=0)
 endif ()
+
+
+add_definitions(-DADV_CORO=0)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fcoroutines-ts -stdlib=libc++")
