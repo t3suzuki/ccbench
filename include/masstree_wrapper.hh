@@ -31,6 +31,7 @@
 #include "debug.hh"
 #include "random.hh"
 #include "util.hh"
+#include "coro.h"
 
 class key_unparse_unsigned {
 public:
