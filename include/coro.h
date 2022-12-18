@@ -360,12 +360,13 @@ inline unsigned long long my_rdtsc() {
     return ret;
 }
 
+#define TSC_US (3000)
+
 #if COROBASE
   #define PROMISE(t) task<t>
   #define RETURN co_return
   #define AWAIT co_await
 #if TR_US
-#define TSC_US (3000)
 #define SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
     tsc0 = __rdtsc();                                                  \
@@ -384,4 +385,29 @@ inline unsigned long long my_rdtsc() {
   #define RETURN return
   #define AWAIT
   #define SUSPEND
+#endif
+
+#if PILO
+  #define PILO_PROMISE(t) task<t>
+  #define PILO_RETURN co_return
+  #define PILO_AWAIT co_await
+#if TR_US
+#define PILO_SUSPEND do {                                                 \
+    unsigned long long tsc0, tsc1;                                              \
+    tsc0 = __rdtsc();                                                  \
+    while (1) {                                                         \
+      tsc1 = __rdtsc();                                                        \
+      if (tsc1 - tsc0 > TR_US * TSC_US)                                 \
+        break;                                                          \
+      co_await std::experimental::suspend_always{};                     \
+    }                                                                   \
+  } while (0);
+#else
+#define PILO_SUSPEND co_await std::experimental::suspend_always{}
+#endif
+#else
+  #define PILO_PROMISE(t) t
+  #define PILO_RETURN return
+  #define PILO_AWAIT
+  #define PILO_SUSPEND
 #endif

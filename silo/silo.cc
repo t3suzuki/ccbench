@@ -103,6 +103,78 @@ RETRY:
 }
 
 
+PILO_PROMISE(void) pilo_work(size_t thid, int i_coro, FastZipf &zipf,
+			     Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
+			     uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
+			     int &n_done, bool &done_coro)
+{
+  while (!loadAcquire(quit)) {
+    TxnExecutor trans(thid, (Result *) &myres);
+#if PARTITION_TABLE
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
+                  thid, myres);
+#else
+    makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
+                  FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, false,
+                  thid, myres);
+#endif
+
+#if PROCEDURE_SORT
+    sort(trans.pro_set_.begin(), trans.pro_set_.end());
+#endif
+
+RETRY:
+    if (thid == 0) {
+      leaderWork(epoch_timer_start, epoch_timer_stop);
+#if BACK_OFF
+      leaderBackoffWork(backoff, SiloResult);
+#endif
+      // printf("Thread #%d: on CPU %d\n", thid, sched_getcpu());
+    }
+    
+    if (loadAcquire(quit)) break;
+    
+    for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
+         ++itr) {
+      PILO_AWAIT trans.prefetch_tree((*itr).key_);
+    }
+    
+    trans.begin();
+    for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
+         ++itr) {
+      if ((*itr).ope_ == Ope::READ) {
+        trans.read((*itr).key_);
+      } else if ((*itr).ope_ == Ope::WRITE) {
+        trans.write((*itr).key_);
+      } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
+        trans.read((*itr).key_);
+        trans.write((*itr).key_);
+      } else {
+        ERR;
+      }
+    }
+
+    if (trans.validationPhase()) {
+      trans.writePhase();
+      /**
+       * local_commit_counts is used at ../include/backoff.hh to calcurate about
+       * backoff.
+       */
+      storeRelease(myres.local_commit_counts_,
+                   loadAcquire(myres.local_commit_counts_) + 1);
+    } else {
+      trans.abort();
+      ++myres.local_abort_counts_;
+      goto RETRY;
+    }
+  }
+  n_done++;
+  done_coro = true;
+  PILO_RETURN;
+}
+
+
 void original_work(size_t thid, TxnExecutor &trans, FastZipf &zipf,
 		   Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
 		   uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop)
@@ -208,14 +280,23 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   while (!loadAcquire(start)) _mm_pause();
   if (thid == 0) epoch_timer_start = rdtscp();
 
-#if COROBASE
+#if defined(COROBASE) || defined(PILO)
   int n_done = 0;
   bool done[N_CORO];
+#if COROBASE
   PROMISE(void) coro[N_CORO];
+#else
+  PILO_PROMISE(void) coro[N_CORO];
+#endif
   for (int i_coro=0; i_coro<N_CORO; i_coro++) {
     done[i_coro] = false;
+#if COROBASE
     coro[i_coro] = corobase_work(thid, i_coro, zipf, rnd, myres,
 				 quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
+#else
+    coro[i_coro] = pilo_work(thid, i_coro, zipf, rnd, myres,
+			     quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
+#endif
     coro[i_coro].start();
   }
 

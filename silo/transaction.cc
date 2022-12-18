@@ -159,6 +159,13 @@ FINISH_READ:
   RETURN;
 }
 
+
+PILO_PROMISE(void) TxnExecutor::prefetch_tree(std::uint64_t key) {
+  Tuple *tuple;
+  PILO_AWAIT MT.get_value_pilo(key, tuple);
+  PILO_RETURN;
+}
+
 void tx_delete([[maybe_unused]]std::uint64_t key) {
 
 }

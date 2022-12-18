@@ -136,6 +136,26 @@ public:
     RETURN found;
   }
 
+  inline PILO_PROMISE(bool) get_value_pilo(std::string_view key, value_ptr_t &value_ptr) {
+    unlocked_cursor_type lp(table_, key.data(), key.size());
+    bool found = PILO_AWAIT lp.find_unlocked_pilo(*ti);
+    if (found) {
+      value_ptr = lp.value();
+    } else {
+      printf("something wrong?\n");
+      std::cout << key << std::endl;
+      exit(2);
+      value_ptr = nullptr;
+    }
+    PILO_RETURN found;
+  }
+
+  inline PILO_PROMISE(bool) get_value_pilo(std::uint64_t key, value_ptr_t &value_ptr) {
+    std::uint64_t key_buf{__builtin_bswap64(key)};
+    bool found = PILO_AWAIT get_value_pilo({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
+    PILO_RETURN found;
+  }
+  
   inline T * get_value(std::string_view key) {
     unlocked_cursor_type lp(table_, key.data(), key.size());
     bool found = lp.find_unlocked(*ti);

@@ -74,6 +74,7 @@ public:
    * @param [in] key The key of key-value
    */
   PROMISE(void) read(std::uint64_t key);
+  PILO_PROMISE(void) prefetch_tree(std::uint64_t key);
 
   /**
    * @brief Search xxx set
