@@ -17,6 +17,9 @@ public:
   uint64_t key_;
   bool ronly_ = false;
   bool wonly_ = false;
+#if MYRW
+  void *tuple;
+#endif
 
   Procedure() : ope_(Ope::READ), key_(0) {}
 

@@ -160,10 +160,85 @@ FINISH_READ:
 }
 
 
-PILO_PROMISE(void) TxnExecutor::prefetch_tree(std::uint64_t key) {
+#if MYRW
+void TxnExecutor::myread(const Procedure &pro) {
+  std::uint64_t key = pro.key_;
+#if ADD_ANALYSIS
+  std::uint64_t start = rdtscp();
+#endif
+
+  Tuple *tuple = (Tuple *)pro.tuple;
+  if (tuple->tidword_.latest == 0) {
+#if MASSTREE_USE
+    MT.get_value_coro(key, tuple);
+#if ADD_ANALYSIS
+    ++sres_->local_tree_traversal_;
+#endif
+#else
+    tuple = get_tuple(Table, key);
+#endif
+  }
+  
+  // these variable cause error (-fpermissive)
+  // "crosses initialization of ..."
+  // So it locate before first goto instruction.
+  Tidword expected, check;
+
+  /**
+   * read-own-writes or re-read from local read set.
+   */
+  if (searchReadSet(key) || searchWriteSet(key)) goto FINISH_READ;
+
+  //(a) reads the TID word, spinning until the lock is clear
+
+  expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+  // check if it is locked.
+  // spinning until the lock is clear
+
+  for (;;) {
+    while (expected.lock) {
+      expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+    }
+
+    //(b) checks whether the record is the latest version
+    // omit. because this is implemented by single version
+
+    //(c) reads the data
+    memcpy(return_val_, tuple->val_, VAL_SIZE);
+
+    //(d) performs a memory fence
+    // don't need.
+    // order of load don't exchange.
+
+    //(e) checks the TID word again
+    check.obj_ = loadAcquire(tuple->tidword_.obj_);
+    if (expected == check) break;
+    expected = check;
+#if ADD_ANALYSIS
+    ++sres_->local_extra_reads_;
+#endif
+  }
+
+  read_set_.emplace_back(key, tuple, return_val_, expected);
+  // emplace is often better performance than push_back.
+
+#if SLEEP_READ_PHASE
+  sleepTics(SLEEP_READ_PHASE);
+#endif
+
+FINISH_READ:
+
+#if ADD_ANALYSIS
+  sres_->local_read_latency_ += rdtscp() - start;
+#endif
+  return;
+}
+#endif
+
+PILO_PROMISE(Tuple *) TxnExecutor::prefetch_tree(std::uint64_t key) {
   Tuple *tuple;
   PILO_AWAIT MT.get_value_pilo(key, tuple);
-  PILO_RETURN;
+  PILO_RETURN tuple;
 }
 
 void tx_delete([[maybe_unused]]std::uint64_t key) {
@@ -331,6 +406,50 @@ FINISH_WRITE:
 #endif
   RETURN;
 }
+
+#if MYRW
+void TxnExecutor::mywrite(const Procedure &pro, std::string_view val) {
+  std::uint64_t key = pro.key_;
+#if ADD_ANALYSIS
+  std::uint64_t start = rdtscp();
+#endif
+
+  if (searchWriteSet(key)) goto FINISH_WRITE;
+
+  /**
+   * Search tuple from data structure.
+   */
+  Tuple *tuple;
+  ReadElement<Tuple> *re;
+  re = searchReadSet(key);
+  if (re) {
+    tuple = re->rcdptr_;
+  } else {
+    Tuple *last_tuple = (Tuple *)pro.tuple;
+    if (last_tuple->tidword_.latest == 0) {
+#if MASSTREE_USE
+      AWAIT MT.get_value_coro(key, tuple);
+#if ADD_ANALYSIS
+      ++sres_->local_tree_traversal_;
+#endif
+#else
+      tuple = get_tuple(Table, key);
+#endif
+    } else {
+      tuple = last_tuple;
+    }
+  }
+
+  write_set_.emplace_back(key, tuple, val);
+
+FINISH_WRITE:
+
+#if ADD_ANALYSIS
+  sres_->local_write_latency_ += rdtscp() - start;
+#endif
+  return;
+}
+#endif
 
 void TxnExecutor::writePhase() {
   // It calculates the smallest number that is

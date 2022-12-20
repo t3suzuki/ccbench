@@ -74,7 +74,8 @@ public:
    * @param [in] key The key of key-value
    */
   PROMISE(void) read(std::uint64_t key);
-  PILO_PROMISE(void) prefetch_tree(std::uint64_t key);
+  void myread(const Procedure &pro);
+  PILO_PROMISE(Tuple *) prefetch_tree(std::uint64_t key);
 
   /**
    * @brief Search xxx set
@@ -111,6 +112,7 @@ public:
    * @param [in] key The key of key-value
    */
   PROMISE(void) write(std::uint64_t key, std::string_view val = "");
+  void mywrite(const Procedure &pro, std::string_view val = "");
 
   void writePhase();
 };

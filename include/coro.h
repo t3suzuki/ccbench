@@ -366,7 +366,7 @@ inline unsigned long long my_rdtsc() {
   #define PROMISE(t) task<t>
   #define RETURN co_return
   #define AWAIT co_await
-#if TR_US
+#if defined(TR_US)
 #define SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
     tsc0 = __rdtsc();                                                  \
@@ -391,7 +391,7 @@ inline unsigned long long my_rdtsc() {
   #define PILO_PROMISE(t) task<t>
   #define PILO_RETURN co_return
   #define PILO_AWAIT co_await
-#if TR_US
+#if defined(TR_US)
 #define PILO_SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
     tsc0 = __rdtsc();                                                  \

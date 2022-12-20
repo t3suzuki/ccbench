@@ -137,12 +137,28 @@ RETRY:
     
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
+#if MYRW
+      itr->tuple = PILO_AWAIT trans.prefetch_tree((*itr).key_);
+#else
       PILO_AWAIT trans.prefetch_tree((*itr).key_);
+#endif
     }
     
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
+#if MYRW
+      if ((*itr).ope_ == Ope::READ) {
+        trans.myread((*itr));
+      } else if ((*itr).ope_ == Ope::WRITE) {
+        trans.mywrite((*itr));
+      } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
+        trans.myread((*itr));
+        trans.mywrite((*itr));
+      } else {
+        ERR;
+      }
+#else
       if ((*itr).ope_ == Ope::READ) {
         trans.read((*itr).key_);
       } else if ((*itr).ope_ == Ope::WRITE) {
@@ -153,6 +169,7 @@ RETRY:
       } else {
         ERR;
       }
+#endif
     }
 
     if (trans.validationPhase()) {
