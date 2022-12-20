@@ -104,7 +104,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 }
 
 int main(int argc, char *argv[]) try {
-  gflags::SetUsageMessage("Silo benchmark.");
+  //gflags::SetUsageMessage("Silo benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
   init();

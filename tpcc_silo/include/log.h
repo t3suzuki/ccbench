@@ -73,9 +73,11 @@ public:
     LogRecord(const tid_word &tid, const OP_TYPE op, const Tuple *const tuple)
             : tid_(tid), op_(op), tuple_(tuple) {}
 
+#if 0
     bool operator<(const LogRecord &right) {  // NOLINT
       return this->tid_ < right.tid_;
     }
+#endif
 
     /**
      * @brief Compute checksum.

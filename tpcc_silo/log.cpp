@@ -81,6 +81,16 @@ unsigned int Log::LogRecord::compute_checksum() {  // NOLINT
   return chkSum;
 }
 
+
+struct log_lessthan
+{
+  inline bool operator() (const Log::LogRecord& struct1, const Log::LogRecord& struct2)
+    {
+      return (struct1.get_tid() < struct2.get_tid());
+    }
+};
+
+  
 [[maybe_unused]] void Log::single_recovery_from_log() {
   std::vector<LogRecord> log_set;
   for (auto i = 0; i < KVS_MAX_PARALLEL_THREADS; ++i) {
@@ -159,7 +169,8 @@ unsigned int Log::LogRecord::compute_checksum() {  // NOLINT
    */
   if (log_set.empty()) return;
 
-  sort(log_set.begin(), log_set.end());
+  //sort(log_set.begin(), log_set.end());
+  sort(log_set.begin(), log_set.end(), log_lessthan());
   const epoch::epoch_t recovery_epoch =
           log_set.back().get_tid().get_epoch() - 2;
 

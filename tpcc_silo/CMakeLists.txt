@@ -45,7 +45,7 @@ file(GLOB SILO_SOURCES
 
 add_executable(silo.exe ${SILO_SOURCES} silo.cpp result.cpp util.cpp tpcc/tpcc_query.cpp tpcc/neworder.cpp tpcc/payment.cpp ../common/util.cc ../common/result.cc)
 
-set_compile_options(silo.exe)
+#set_compile_options(silo.exe)
 
 target_include_directories(silo.exe
         PRIVATE ${PROJECT_SOURCE_DIR}
@@ -76,3 +76,4 @@ add_definitions(-DKVS_MAX_KEY_LENGTH=1000)
 add_definitions(-DKVS_LOG_GC_THRESHOLD=1)
 add_definitions(-DPROJECT_ROOT=${PROJECT_SOURCE_DIR})
 
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
