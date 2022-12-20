@@ -17,46 +17,66 @@
 #include "tpcc_query.hpp"
 #include "tpcc_txn.hpp"
 #include "clock.h"
-
+#include "../include/coro.h"
 
 using namespace std;
 
-void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 
-#ifdef CCBENCH_LINUX
-  ccbench::setThreadAffinity(thid);
-#endif
-
-  std::uint64_t lcl_cmt_cnt{0};
-  std::uint64_t lcl_abt_cnt{0};
-
+#if COROBASE
+PROMISE(void) corobase_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg, int i_coro, int &n_done, bool &done_coro)
+{
   TPCC::Query query;
-  Token token{};
-  enter(token);
   TPCC::query::Option query_opt;
+  
+  while (!loadAcquire(quit)) {
 
-  const uint16_t w_id = (thid % FLAGS_num_wh) + 1; // home warehouse.
-#if 1
-  // Load per warehouse if necessary.
-  // thid in [0, num_th - 1].
-  // w_id in [1, FLAGS_num_wh].
-  // The worker thread of thid in [0, FLAGS_num_wh - 1]
-  // should load data for the warehouse with w_id = thid + 1.
+    query.generate(w_id, query_opt);
 
-  size_t id = thid + 1;
-  while (id <= FLAGS_num_wh) {
-    //::printf("load for warehouse %u ...\n", id);
-    TPCC::Initializer::load_per_warehouse(id);
-    //::printf("load for warehouse %u done.\n", id);
-    id += FLAGS_thread_num;
+    // TODO : add backoff work.
+
+    if (loadAcquire(quit)) break;
+
+    bool validation = true;
+
+    switch (query.type) {
+      case TPCC::Q_NEW_ORDER :
+        validation = AWAIT TPCC::run_new_order(&query.new_order, token);
+        break;
+      case TPCC::Q_PAYMENT :
+        validation = TPCC::run_payment(&query.payment, &hkg, token);
+        break;
+      case TPCC::Q_ORDER_STATUS:
+        //validation = TPCC::run_order_status(query.order_status);
+        break;
+      case TPCC::Q_DELIVERY:
+        //validation = TPCC::run_delivery(query.delivery);
+        break;
+      case TPCC::Q_STOCK_LEVEL:
+        //validation = TPCC::run_stock_level(query.stock_level);
+        break;
+      case TPCC::Q_NONE:
+        break;
+      [[maybe_unused]] defalut:
+        std::abort();
+    }
+
+    if (validation) {
+      ++lcl_cmt_cnt;
+    } else {
+      ++lcl_abt_cnt;
+    }
   }
-#endif
+  n_done++;
+  done_coro = true;
+  RETURN;
+}
+#else
 
-  TPCC::HistoryKeyGenerator hkg{};
-  hkg.init(thid, true);
-
-  storeRelease(ready, 1);
-  while (!loadAcquire(start)) _mm_pause();
+void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg)
+{
+  TPCC::Query query;
+  TPCC::query::Option query_opt;
+  
   while (!loadAcquire(quit)) {
 
     query.generate(w_id, query_opt);
@@ -95,6 +115,73 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
       ++lcl_abt_cnt;
     }
   }
+}
+#endif
+
+
+void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
+
+#ifdef CCBENCH_LINUX
+  ccbench::setThreadAffinity(thid);
+#endif
+
+  std::uint64_t lcl_cmt_cnt{0};
+  std::uint64_t lcl_abt_cnt{0};
+
+  Token token{};
+  enter(token);
+
+  const uint16_t w_id = (thid % FLAGS_num_wh) + 1; // home warehouse.
+#if 1
+  // Load per warehouse if necessary.
+  // thid in [0, num_th - 1].
+  // w_id in [1, FLAGS_num_wh].
+  // The worker thread of thid in [0, FLAGS_num_wh - 1]
+  // should load data for the warehouse with w_id = thid + 1.
+
+  size_t id = thid + 1;
+  while (id <= FLAGS_num_wh) {
+    //::printf("load for warehouse %u ...\n", id);
+    TPCC::Initializer::load_per_warehouse(id);
+    //::printf("load for warehouse %u done.\n", id);
+    id += FLAGS_thread_num;
+  }
+#endif
+
+  TPCC::HistoryKeyGenerator hkg{};
+  hkg.init(thid, true);
+
+  storeRelease(ready, 1);
+  while (!loadAcquire(start)) _mm_pause();
+
+#if defined(COROBASE) || defined(PILO)
+  int n_done = 0;
+  bool done[N_CORO];
+#if COROBASE
+  PROMISE(void) coro[N_CORO];
+#else
+  PILO_PROMISE(void) coro[N_CORO];
+#endif
+  for (int i_coro=0; i_coro<N_CORO; i_coro++) {
+    done[i_coro] = false;
+#if COROBASE
+    coro[i_coro] = corobase_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token, hkg,
+				 i_coro, n_done, done[i_coro]);
+#else
+#endif
+    coro[i_coro].start();
+  }
+
+  do {
+    for (int i_coro=0; i_coro<N_CORO; i_coro++) {
+      if (!done[i_coro])
+        coro[i_coro].resume();
+    }
+  } while (n_done != N_CORO);
+#else
+  original_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token, hkg);
+#endif
+  
   leave(token);
   SiloResult[thid].local_commit_counts_ = lcl_cmt_cnt;
   SiloResult[thid].local_abort_counts_ = lcl_abt_cnt;
