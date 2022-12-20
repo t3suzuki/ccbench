@@ -229,6 +229,15 @@ public:
     return nullptr;
   }
 
+  PROMISE(T *) get_value_coro(const char *key, std::size_t len_key) {  // NOLINT
+    unlocked_cursor_type lp(table_, key, len_key);
+    bool found = AWAIT lp.find_unlocked_coro(*ti);
+    if (found) {
+      RETURN lp.value();
+    }
+    RETURN nullptr;
+  }
+  
   T *get_value(std::string_view key) {
     return get_value(key.data(), key.size());
   }

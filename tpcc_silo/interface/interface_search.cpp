@@ -2,6 +2,7 @@
 #include "session_info_table.h"
 #include "index/masstree_beta/include/masstree_beta_wrapper.h"
 #include "interface.h"  // NOLINT
+#include "../include/coro.h"
 
 namespace ccbench {
 
@@ -59,4 +60,40 @@ Status search_key(Token token, Storage storage,  // NOLINT
   return rr;
 }
 
+PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
+				std::string_view key, Tuple **tuple) {
+  auto *ti = static_cast<session_info *>(token);
+  if (!ti->get_txbegan()) tx_begin(token);
+
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+
+  Status sta = search_key_local_set(ti, storage, key, tuple);
+  if (sta != Status::OK) RETURN sta;
+
+  //Record *rec_ptr{kohler_masstree::get_mtdb(storage).get_value(key.data(), key.size())};
+  auto mt = kohler_masstree::get_mtdb(storage);
+  auto v = AWAIT mt.get_value_coro(key.data(), key.size());
+  Record *rec_ptr{v};
+  if (rec_ptr == nullptr) {
+    *tuple = nullptr;
+    RETURN Status::WARN_NOT_FOUND;
+  }
+  tid_word chk_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+  if (chk_tid.get_absent()) {
+    // The second condition checks
+    // whether the record you want to read should not be read by parallel
+    // insert / delete.
+    *tuple = nullptr;
+    RETURN Status::WARN_NOT_FOUND;
+  }
+
+  read_set_obj rs_ob(storage, rec_ptr);
+  Status rr = read_record(rs_ob.get_rec_read(), rec_ptr);
+  if (rr == Status::OK) {
+    ti->get_read_set().emplace_back(std::move(rs_ob));
+    *tuple = &ti->get_read_set().back().get_rec_read().get_tuple();
+  }
+  RETURN rr;
+}
+  
 }  // namespace ccbench

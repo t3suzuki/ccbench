@@ -185,17 +185,17 @@ bool get_item(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
  * AND s_w_id = :ol_supply_w_id;
  * +===============================================
  */
-bool get_and_update_stock(
+PROMISE(bool) get_and_update_stock(
   Token& token, uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
   const TPCC::Stock*& sto)
 {
     SimpleKey<8> s_key;
     TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
     Tuple *tuple;
-    Status stat = search_key(token, Storage::STOCK, s_key.view(), &tuple);
+    Status stat = AWAIT search_key_coro(token, Storage::STOCK, s_key.view(), &tuple);
     if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
       abort(token);
-      return false;
+      RETURN false;
     }
     const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
 
@@ -218,10 +218,10 @@ bool get_and_update_stock(
     stat = update(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
     if (stat == Status::WARN_NOT_FOUND) {
       abort(token);
-      return false;
+      RETURN false;
     }
     sto = &tuple->get_value().cast_to<TPCC::Stock>();
-    return true;
+    RETURN true;
 }
 
 
@@ -282,7 +282,7 @@ bool insert_orderline(
 } // unnamed namespace
 
 
-bool run_new_order(TPCC::query::NewOrder *query, Token &token)
+PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 {
   bool remote = query->remote;
   uint16_t w_id = query->w_id;
@@ -291,20 +291,20 @@ bool run_new_order(TPCC::query::NewOrder *query, Token &token)
   uint8_t ol_cnt = query->ol_cnt;
 
   const TPCC::Warehouse *ware;
-  if (!get_warehouse(token, w_id, ware)) return false;
+  if (!get_warehouse(token, w_id, ware)) RETURN false;
 
   const TPCC::Customer *cust;
-  if (!get_customer(token, c_id, d_id, w_id, cust)) return false;
+  if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN false;
 
   const TPCC::District *dist;
-  if (!get_and_update_district(token, d_id, w_id, dist)) return false;
+  if (!get_and_update_district(token, d_id, w_id, dist)) RETURN false;
 
   uint32_t o_id = dist->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord;
 
   if (FLAGS_insert_exe) {
-    if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) return false;
-    if (!insert_neworder(token, o_id, d_id, w_id)) return false;
+    if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN false;
+    if (!insert_neworder(token, o_id, d_id, w_id)) RETURN false;
   }
 
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
@@ -313,11 +313,13 @@ bool run_new_order(TPCC::query::NewOrder *query, Token &token)
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
-    if (!get_item(token, ol_i_id, item)) return false;
+    if (!get_item(token, ol_i_id, item)) RETURN false;
 
     const TPCC::Stock *sto;
-    if (!get_and_update_stock(
-          token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) return false;
+    //if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) return false;
+    auto ret = AWAIT get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+    if (!ret)
+      RETURN false;
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
@@ -328,14 +330,14 @@ bool run_new_order(TPCC::query::NewOrder *query, Token &token)
 
       if (!insert_orderline(
             token, o_id, d_id, w_id, ol_num, ol_i_id,
-            ol_supply_w_id, ol_quantity, ol_amount, sto)) return false;
+            ol_supply_w_id, ol_quantity, ol_amount, sto)) RETURN false;
     }
   } // end of ol loop
   if (commit(token) == Status::OK) {
-    return true;
+    RETURN true;
   }
   abort(token);
-  return false;
+  RETURN false;
 }
 
 } // namespace TPCC

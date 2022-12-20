@@ -22,8 +22,8 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CompileOptions)
 
-enable_testing()
-add_subdirectory(test)
+#enable_testing()
+#add_subdirectory(test)
 
 file(GLOB SILO_SOURCES
         "../common/util.cc"
@@ -57,6 +57,7 @@ target_include_directories(silo.exe
         )
 
 target_link_libraries(silo.exe
+	numa
         Boost::filesystem
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
@@ -77,3 +78,5 @@ add_definitions(-DKVS_LOG_GC_THRESHOLD=1)
 add_definitions(-DPROJECT_ROOT=${PROJECT_SOURCE_DIR})
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
+set_target_properties(silo.exe PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=4 -DN_CORO=4")
+

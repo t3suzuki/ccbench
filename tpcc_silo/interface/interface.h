@@ -8,6 +8,7 @@
 #include "scheme.h"
 #include "scheme_global.h"
 #include "tuple.h"
+#include "../include/coro.h"
 
 #define STRING(macro) #macro          // NOLINT
 #define MAC2STR(macro) STRING(macro)  // NOLINT
@@ -289,6 +290,9 @@ Status scan_key(Token token, Storage storage,  // NOLINT
 Status search_key(Token token, Storage storage,  // NOLINT
                          std::string_view key, Tuple **tuple);
 
+PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
+				std::string_view key, Tuple **tuple);
+  
 /**
  * @brief Recovery by single thread.
  * @details This function isn't thread safe.
