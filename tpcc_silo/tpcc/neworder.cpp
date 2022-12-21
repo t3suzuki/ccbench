@@ -255,7 +255,7 @@ PROMISE(bool) get_and_update_stock_coro(
     if (s_quantity <= ol_quantity + 10) quantity += 91;
     new_sto.S_QUANTITY = quantity;
 
-    stat = update(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
+    stat = AWAIT update_coro(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
     if (stat == Status::WARN_NOT_FOUND) {
       abort(token);
       RETURN false;

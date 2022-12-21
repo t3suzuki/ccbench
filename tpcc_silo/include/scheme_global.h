@@ -168,6 +168,8 @@ enum class Status : std::int32_t {
    * between read phase and validation phase. So it called abort.
    */
   ERR_WRITE_TO_DELETED_RECORD,
+  
+  ERR_WRITE_LOCK,
 };
 
 inline constexpr std::string_view to_string_view(  // NOLINT

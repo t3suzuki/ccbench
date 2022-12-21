@@ -17,15 +17,10 @@ Status abort(Token token) {  // NOLINT
   return Status::OK;
 }
 
-Status commit(Token token) {  // NOLINT
+inline Status
+lock_wset(Token token, tid_word &max_wset)
+{
   auto *ti = static_cast<session_info *>(token);
-  tid_word max_rset;
-  tid_word max_wset;
-
-  // Phase 1: Sort lock list;
-  std::sort(ti->get_write_set().begin(), ti->get_write_set().end());
-
-  // Phase 2: Lock write set;
   tid_word expected;
   tid_word desired;
   for (auto itr = ti->get_write_set().begin(); itr != ti->get_write_set().end();
@@ -35,8 +30,13 @@ Status commit(Token token) {  // NOLINT
     expected.get_obj() = loadAcquire(itr->get_rec_ptr()->get_tidw().get_obj());
     for (;;) {
       if (expected.get_lock()) {
+#if 1
+        if (itr != ti->get_write_set().begin()) ti->unlock_write_set();;
+        return Status::ERR_WRITE_LOCK;
+#else	
         expected.get_obj() =
                 loadAcquire(itr->get_rec_ptr()->get_tidw().get_obj());
+#endif
       } else {
         desired = expected;
         desired.set_lock(true);
@@ -55,6 +55,22 @@ Status commit(Token token) {  // NOLINT
 
     max_wset = std::max(max_wset, expected);
   }
+  return Status::OK;
+}
+
+  
+Status commit(Token token) {  // NOLINT
+  auto *ti = static_cast<session_info *>(token);
+  tid_word max_rset;
+  tid_word max_wset;
+
+  // Phase 1: Sort lock list;
+  std::sort(ti->get_write_set().begin(), ti->get_write_set().end());
+
+  // Phase 2: Lock write set;
+  Status status = lock_wset(ti, max_wset);
+  if (status != Status::OK)
+    return status;
 
   // Serialization point
   asm volatile("":: : "memory");  // NOLINT
@@ -91,5 +107,5 @@ Status commit(Token token) {  // NOLINT
   return
           Status::OK;
 }
-
+  
 }  // namespace ccbench
