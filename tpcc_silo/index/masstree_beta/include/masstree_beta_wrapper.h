@@ -228,8 +228,8 @@ public:
     }
     return nullptr;
   }
-
-  PROMISE(T *) get_value_coro(const char *key, std::size_t len_key) {  // NOLINT
+  
+  inline PROMISE(T *) get_value_coro(const char *key, std::size_t len_key) {  // NOLINT
     unlocked_cursor_type lp(table_, key, len_key);
     bool found = AWAIT lp.find_unlocked_coro(*ti);
     if (found) {
@@ -238,7 +238,7 @@ public:
     RETURN nullptr;
   }
   
-  PROMISE(T *) get_value_coro(std::string_view key) {
+  inline PROMISE(T *) get_value_coro(std::string_view key) {
     auto v = AWAIT get_value_coro(key.data(), key.size());
     RETURN v;
   }

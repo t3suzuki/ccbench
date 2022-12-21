@@ -185,7 +185,47 @@ bool get_item(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
  * AND s_w_id = :ol_supply_w_id;
  * +===============================================
  */
-PROMISE(bool) get_and_update_stock(
+bool get_and_update_stock(
+  Token& token, uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
+  const TPCC::Stock*& sto)
+{
+    SimpleKey<8> s_key;
+    TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
+    Tuple *tuple;
+    Status stat = search_key(token, Storage::STOCK, s_key.view(), &tuple);
+    if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+      abort(token);
+      return false;
+    }
+    const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
+
+    HeapObject s_obj;
+    s_obj.allocate<TPCC::Stock>();
+    TPCC::Stock& new_sto = s_obj.ref();
+    memcpy(&new_sto, &old_sto, sizeof(new_sto));
+
+    new_sto.S_YTD = old_sto.S_YTD + ol_quantity;
+    new_sto.S_ORDER_CNT = old_sto.S_ORDER_CNT + 1;
+    if (remote) {
+      new_sto.S_REMOTE_CNT = old_sto.S_REMOTE_CNT + 1;
+    }
+
+    int32_t s_quantity = old_sto.S_QUANTITY;
+    int32_t quantity = s_quantity - ol_quantity;
+    if (s_quantity <= ol_quantity + 10) quantity += 91;
+    new_sto.S_QUANTITY = quantity;
+
+    stat = update(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
+    if (stat == Status::WARN_NOT_FOUND) {
+      abort(token);
+      return false;
+    }
+    sto = &tuple->get_value().cast_to<TPCC::Stock>();
+    return true;
+}
+
+
+PROMISE(bool) get_and_update_stock_coro(
   Token& token, uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
   const TPCC::Stock*& sto)
 {
@@ -215,7 +255,7 @@ PROMISE(bool) get_and_update_stock(
     if (s_quantity <= ol_quantity + 10) quantity += 91;
     new_sto.S_QUANTITY = quantity;
 
-    stat = AWAIT update_coro(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
+    stat = update(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
     if (stat == Status::WARN_NOT_FOUND) {
       abort(token);
       RETURN false;
@@ -316,10 +356,13 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
     if (!get_item(token, ol_i_id, item)) RETURN false;
 
     const TPCC::Stock *sto;
-    //if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) return false;
-    auto ret = AWAIT get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+#if 0
+    if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) RETURN false;
+#else
+    auto ret = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
     if (!ret)
       RETURN false;
+#endif
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
