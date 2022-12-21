@@ -316,6 +316,7 @@ PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
  */
 Status update(Token token, Storage st, std::string_view key, std::string_view val, std::align_val_t val_align, Tuple** tuple_out = nullptr);
 Status update(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
+PROMISE(Status) update_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
 
 /**
  * @brief update the record for the given key, or insert the key/value if the

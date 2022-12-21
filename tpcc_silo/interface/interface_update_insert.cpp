@@ -127,6 +127,45 @@ Status update_detail(
   return Status::OK;
 }
 
+
+template <typename KeyFunc, typename TupleFunc, typename ObjFunc>
+PROMISE(Status) update_detail_coro(
+    Token token, Storage st,
+    KeyFunc&& key_func, TupleFunc&& tuple_func, ObjFunc&& obj_func,
+    Tuple** tuple_out)
+{
+  session_info *ti;
+  write_set_obj* inws = prepare_insert_or_update_or_upsert(token, st, key_func(), ti);
+  if (inws != nullptr) {
+    inws->reset_tuple_value(obj_func());
+    if (tuple_out != nullptr) *tuple_out = &inws->get_tuple();
+    RETURN Status::WARN_WRITE_TO_LOCAL_WRITE;
+  }
+
+  Record* rec_ptr;
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+  //rec_ptr = kohler_masstree::get_mtdb(st).get_value(key_func());
+  auto mt = kohler_masstree::get_mtdb(st);
+  rec_ptr = AWAIT mt.get_value_coro(key_func());
+  if (rec_ptr == nullptr) {
+    RETURN Status::WARN_NOT_FOUND;
+  }
+
+  tid_word check_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+  if (check_tid.get_absent()) {
+    // The second condition checks
+    // whether the record you want to read should not be read by parallel
+    // insert / delete.
+    RETURN Status::WARN_NOT_FOUND;
+  }
+
+  auto& ws = ti->get_write_set();
+  ws.emplace_back(OP_TYPE::UPDATE, st, rec_ptr, tuple_func());
+  if (tuple_out != nullptr) *tuple_out = &ws.back().get_tuple();
+  RETURN Status::OK;
+}
+
+  
 } // unnamed namespace
 
 
@@ -154,6 +193,17 @@ Status update(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
     tuple_out);
 }
 
+PROMISE(Status) update_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
+{
+  auto status = AWAIT update_detail_coro(
+    token, st,
+    [&]() -> std::string_view { return tuple.get_key(); },
+    [&]() -> Tuple { return std::move(tuple); },
+    [&]() -> HeapObject { return std::move(tuple.get_value()); },
+    tuple_out);
+  RETURN status;
+}
+  
 
 namespace {
 

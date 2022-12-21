@@ -238,6 +238,11 @@ public:
     RETURN nullptr;
   }
   
+  PROMISE(T *) get_value_coro(std::string_view key) {
+    auto v = AWAIT get_value_coro(key.data(), key.size());
+    RETURN v;
+  }
+
   T *get_value(std::string_view key) {
     return get_value(key.data(), key.size());
   }
