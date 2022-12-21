@@ -49,6 +49,22 @@ bool get_customer(
   return true;
 }
 
+PROMISE(bool) get_customer_coro(
+  Token& token, uint32_t c_id, uint8_t d_id, uint16_t w_id,
+  const TPCC::Customer*& cust)
+{
+  SimpleKey<8> c_key;
+  TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
+  Tuple *tuple;
+  Status stat = AWAIT search_key_coro(token, Storage::CUSTOMER, c_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  cust = &tuple->get_value().cast_to<TPCC::Customer>();
+  RETURN true;
+}
+  
 
 /**
  * ==================================================+
@@ -167,6 +183,20 @@ bool get_item(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
   }
   item = &tuple->get_value().cast_to<TPCC::Item>();
   return true;
+}
+
+PROMISE(bool) get_item_coro(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
+{
+  SimpleKey<8> i_key;
+  TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
+  Tuple *tuple;
+  Status sta = AWAIT search_key_coro(token, Storage::ITEM, i_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  item = &tuple->get_value().cast_to<TPCC::Item>();
+  RETURN true;
 }
 
 
@@ -334,7 +364,13 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   if (!get_warehouse(token, w_id, ware)) RETURN false;
 
   const TPCC::Customer *cust;
+#if 0
   if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN false;
+#else
+  auto ret_customer = get_customer(token, c_id, d_id, w_id, cust);
+  if (!ret_customer)
+    RETURN false;
+#endif
 
   const TPCC::District *dist;
   if (!get_and_update_district(token, d_id, w_id, dist)) RETURN false;
@@ -353,14 +389,20 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
+#if 0
     if (!get_item(token, ol_i_id, item)) RETURN false;
+#else
+    auto ret_item = AWAIT get_item_coro(token, ol_i_id, item);
+    if (!ret_item)
+      RETURN false;
+#endif
 
     const TPCC::Stock *sto;
 #if 0
     if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) RETURN false;
 #else
-    auto ret = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
-    if (!ret)
+    auto ret_stock = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+    if (!ret_stock)
       RETURN false;
 #endif
 
