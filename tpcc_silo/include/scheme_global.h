@@ -208,6 +208,8 @@ inline constexpr std::string_view to_string_view(  // NOLINT
       return "ERR_VALIDATION"sv;  // NOLINT
     case Status::ERR_WRITE_TO_DELETED_RECORD:
       return "ERR_WRITE_TO_DELETED_RECORD"sv;  // NOLINT
+    case Status::ERR_WRITE_LOCK:
+      return "ERR_WRITE_LOCK"sv;  // NOLINT
   }
   std::abort();
 }

@@ -77,7 +77,7 @@ PROMISE(Status) insert_detail_coro(
 
   Record *rec = new Record(tuple_func());
   assert(rec != nullptr);
-  Status rr = kohler_masstree::insert_record(st, rec->get_tuple().get_key(), rec);
+  Status rr = AWAIT kohler_masstree::insert_record_coro(st, rec->get_tuple().get_key(), rec);
   if (rr != Status::OK) {
       delete rec;  // NOLINT
       RETURN Status::WARN_ALREADY_EXISTS;

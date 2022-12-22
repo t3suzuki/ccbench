@@ -178,10 +178,33 @@ public:
     return Status::OK;
   }
 
+  inline PROMISE(Status) insert_value_coro(const char *key,      // NOLINT
+                      std::size_t len_key,  // NOLINT
+                      T *value) {
+    cursor_type lp(table_, key, len_key);
+    bool found = AWAIT lp.find_insert_coro(*ti);
+    // always_assert(!found, "keys should all be unique");
+    if (found) {
+      // release lock of existing nodes meaning the first arg equals 0
+      lp.finish(0, *ti);
+      // return
+      RETURN Status::WARN_ALREADY_EXISTS;
+    }
+    lp.value() = value;
+    fence();
+    lp.finish(1, *ti);
+    RETURN Status::OK;
+  }
+  
   Status insert_value(std::string_view key, T *value) {
     return insert_value(key.data(), key.size(), value);
   }
 
+  inline PROMISE(Status) insert_value_coro(std::string_view key, T *value) {
+    auto v = AWAIT insert_value_coro(key.data(), key.size(), value);
+    RETURN v;
+  }
+  
   // for bench.
   Status put_value(const char *key, std::size_t len_key,  // NOLINT
                    T *value, T **record) {
@@ -310,6 +333,7 @@ public:
    * @return Status::OK It inserted record.
    */
   static Status insert_record(Storage st, std::string_view key, Record *record); // NOLINT
+  static PROMISE(Status) insert_record_coro(Storage st, std::string_view key, Record *record); // NOLINT
 
 private:
   static inline std::array<masstree_wrapper<Record>, db_length> MTDB;  // NOLINT
