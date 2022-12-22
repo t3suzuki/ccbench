@@ -137,6 +137,33 @@ bool insert_order(
   return true;
 }
 
+PROMISE(bool) insert_order_coro(
+  Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
+  uint8_t ol_cnt, bool remote,
+  const TPCC::Order*& ord)
+{
+  HeapObject o_obj;
+  o_obj.allocate<TPCC::Order>();
+  TPCC::Order& new_ord = o_obj.ref();
+  new_ord.O_ID = o_id;
+  new_ord.O_D_ID = d_id;
+  new_ord.O_W_ID = w_id;
+  new_ord.O_C_ID = c_id;
+  new_ord.O_ENTRY_D = ccbench::epoch::get_lightweight_timestamp();
+  new_ord.O_OL_CNT = ol_cnt;
+  new_ord.O_ALL_LOCAL = (remote ? 0 : 1);
+  SimpleKey<8> o_key;
+  TPCC::Order::CreateKey(new_ord.O_W_ID, new_ord.O_D_ID, new_ord.O_ID, o_key.ptr());
+  Tuple *tuple;
+  Status sta = AWAIT insert_coro(token, Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)), &tuple);
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  //ord = &tuple->get_value().cast_to<TPCC::Order>();
+  RETURN true;
+}
+  
 
 /**
  * =======================================================+
@@ -160,6 +187,24 @@ bool insert_neworder(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
     return false;
   }
   return true;
+}
+
+PROMISE(bool) insert_neworder_coro(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
+{
+  HeapObject no_obj;
+  no_obj.allocate<TPCC::NewOrder>();
+  TPCC::NewOrder& new_no = no_obj.ref();
+  new_no.NO_O_ID = o_id;
+  new_no.NO_D_ID = d_id;
+  new_no.NO_W_ID = w_id;
+  SimpleKey<8> no_key;
+  TPCC::NewOrder::CreateKey(new_no.NO_W_ID, new_no.NO_D_ID, new_no.NO_O_ID, no_key.ptr());
+  Status sta = AWAIT insert_coro(token, Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  RETURN true;
 }
 
 
@@ -379,8 +424,17 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   [[maybe_unused]] const TPCC::Order *ord;
 
   if (FLAGS_insert_exe) {
+#if 0
     if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN false;
     if (!insert_neworder(token, o_id, d_id, w_id)) RETURN false;
+#else
+    auto ret_order = insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord);
+    if (!ret_order)
+      RETURN false;
+    auto ret_neworder = insert_neworder(token, o_id, d_id, w_id);
+    if (!ret_neworder)
+      RETURN false;
+#endif
   }
 
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {

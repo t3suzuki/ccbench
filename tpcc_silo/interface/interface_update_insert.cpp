@@ -55,6 +55,38 @@ Status insert_detail(
   return Status::OK;
 }
 
+template <typename KeyFunc, typename TupleFunc, typename ObjFunc>
+PROMISE(Status) insert_detail_coro(
+    Token token, Storage st,
+    KeyFunc&& key_func, TupleFunc&& tuple_func, ObjFunc&& obj_func,
+    Tuple** tuple_out)
+{
+  session_info *ti;
+  write_set_obj* inws = prepare_insert_or_update_or_upsert(token, st, key_func(), ti);
+  if (inws != nullptr) {
+    inws->reset_tuple_value(obj_func());
+    if (tuple_out != nullptr) *tuple_out = &inws->get_tuple();
+    RETURN Status::WARN_WRITE_TO_LOCAL_WRITE;
+  }
+
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+  auto ret = AWAIT kohler_masstree::find_record_coro(st, key_func());
+  if (ret != nullptr) {
+    RETURN Status::WARN_ALREADY_EXISTS;
+  }
+
+  Record *rec = new Record(tuple_func());
+  assert(rec != nullptr);
+  Status rr = kohler_masstree::insert_record(st, rec->get_tuple().get_key(), rec);
+  if (rr != Status::OK) {
+      delete rec;  // NOLINT
+      RETURN Status::WARN_ALREADY_EXISTS;
+  }
+  auto& ws = ti->get_write_set();
+  ws.emplace_back(OP_TYPE::INSERT, st, rec);
+  if (tuple_out != nullptr) *tuple_out = &ws.back().get_tuple();
+  RETURN Status::OK;
+}
 
 } // unnamed namepsace
 
@@ -87,6 +119,17 @@ Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
     [&]() -> Tuple { return std::move(tuple); },
     [&]() -> HeapObject { return std::move(tuple.get_value()); },
     tuple_out);
+}
+
+PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
+{
+  auto ret = AWAIT insert_detail_coro(
+    token, st,
+    [&]() -> std::string_view { return tuple.get_key(); },
+    [&]() -> Tuple { return std::move(tuple); },
+    [&]() -> HeapObject { return std::move(tuple.get_value()); },
+    tuple_out);
+  RETURN ret;
 }
 
 
