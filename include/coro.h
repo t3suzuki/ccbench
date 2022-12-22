@@ -353,6 +353,20 @@ private:
   coroutine_handle suspended_task_coroutine_;
 };
 
+#if MY_TIME_CORE
+extern unsigned long long current_my_time;
+#endif
+
+
+
+inline unsigned long long get_time() {
+#if MY_TIME_CORE
+  return current_my_time;
+#else
+  return __rdtsc();
+#endif
+}
+
 
 inline unsigned long long my_rdtsc() {
     unsigned long long ret;
@@ -369,9 +383,9 @@ inline unsigned long long my_rdtsc() {
 #if defined(TR_US)
 #define SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
-    tsc0 = __rdtsc();                                                  \
+    tsc0 = get_time();                                                  \
     while (1) {                                                         \
-      tsc1 = __rdtsc();                                                        \
+      tsc1 = get_time();                                                        \
       if (tsc1 - tsc0 > TR_US * TSC_US)                                 \
         break;                                                          \
       co_await std::experimental::suspend_always{};                     \

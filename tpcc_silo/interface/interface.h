@@ -161,6 +161,7 @@ Status init(                                                // NOLINT
  */
 Status insert(Token token, Storage st, std::string_view key, std::string_view val, std::align_val_t val_align, Tuple** tuple_out = nullptr);
 Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
+PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
 
 /**
  * @brief leave session

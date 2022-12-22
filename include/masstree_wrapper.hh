@@ -115,6 +115,27 @@ public:
     insert_value({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
   }
 
+  inline PROMISE(void) insert_value_coro(std::string_view key, T *value) {
+    cursor_type lp(table_, key.data(), key.size());
+    bool found = AWAIT lp.find_insert_coro(*ti);
+    // always_assert(!found, "keys should all be unique");
+    if (found) {
+      // release lock of existing nodes meaning the first arg equals 0
+      lp.finish(0, *ti);
+      RETURN;
+    }
+    lp.value() = value;
+    fence();
+    lp.finish(1, *ti);
+    RETURN;
+  }
+
+  inline PROMISE(void) insert_value_coro(std::uint64_t key, T *value) {
+    std::uint64_t key_buf{__builtin_bswap64(key)};
+    AWAIT insert_value_coro({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value); // NOLINT
+    RETURN;
+  }
+  
   using value_ptr_t = T *;
   inline PROMISE(bool) get_value_coro(std::string_view key, value_ptr_t &value_ptr) {
     unlocked_cursor_type lp(table_, key.data(), key.size());

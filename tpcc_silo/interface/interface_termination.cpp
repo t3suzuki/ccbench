@@ -31,7 +31,7 @@ lock_wset(Token token, tid_word &max_wset)
     for (;;) {
       if (expected.get_lock()) {
 #if 1
-        if (itr != ti->get_write_set().begin()) ti->unlock_write_set();;
+        if (itr != ti->get_write_set().begin()) ti->unlock_write_set();
         return Status::ERR_WRITE_LOCK;
 #else	
         expected.get_obj() =

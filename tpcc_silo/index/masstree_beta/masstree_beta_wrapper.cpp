@@ -27,4 +27,12 @@ kohler_masstree::find_record(Storage st, std::string_view key) {
   return get_mtdb(st).get_value(key.data(), key.size());
 }
 
+PROMISE(void *)
+kohler_masstree::find_record_coro(Storage st, std::string_view key) {
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+  auto mt = get_mtdb(st);
+  auto ret = AWAIT mt.get_value_coro(key.data(), key.size());
+  RETURN ret;
+}
+  
 }  // namespace shirakami

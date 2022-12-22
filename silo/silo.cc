@@ -253,6 +253,20 @@ RETRY:
   }
 }
 
+
+#define _GNU_SOURCE
+#include <sched.h>
+
+void setThreadAffinity(int core)
+{
+  cpu_set_t cpu_set;
+  CPU_ZERO(&cpu_set);
+  CPU_SET(core, &cpu_set);
+  sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set);
+}
+
+
+
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   Result &myres = std::ref(SiloResult[thid]);
   Xoroshiro128Plus rnd;
@@ -282,7 +296,8 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   trans.logfile_.ftruncate(10 ^ 9);
 #endif
 
-#ifdef Linux
+  //#ifdef Linux
+#if 1
   setThreadAffinity(thid);
   // printf("Thread #%d: on CPU %d\n", res.thid_, sched_getcpu());
   // printf("sysconf(_SC_NPROCESSORS_CONF) %d\n",
@@ -332,7 +347,25 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
 
 thread_local tcalloc coroutine_allocator;
 
+#if MY_TIME_CORE
+unsigned long long current_my_time;
+
+void my_time_func()
+{
+  setThreadAffinity(MY_TIME_CORE);
+  for (;;) {
+    current_my_time = __rdtsc();
+    _mm_pause();
+  }
+}
+#endif
+
 int main(int argc, char *argv[]) try {
+#if MY_TIME_CORE
+  std::thread time_thread(my_time_func);
+  printf("Run my_time_func @ core %d...\n", MY_TIME_CORE);
+#endif
+  
 #if COROBASE
   printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
 #else

@@ -72,8 +72,11 @@ PROMISE(void) corobase_work(const bool &quit, const uint16_t w_id, std::uint64_t
 }
 #else
 
-void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg)
+void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, TPCC::HistoryKeyGenerator &hkg)
 {
+  Token token{};
+  enter(token);
+
   TPCC::Query query;
   TPCC::query::Option query_opt;
   
@@ -115,6 +118,7 @@ void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt
       ++lcl_abt_cnt;
     }
   }
+  leave(token);
 }
 #endif
 
@@ -127,9 +131,6 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 
   std::uint64_t lcl_cmt_cnt{0};
   std::uint64_t lcl_abt_cnt{0};
-
-  Token token{};
-  enter(token);
 
   const uint16_t w_id = (thid % FLAGS_num_wh) + 1; // home warehouse.
 #if 1
@@ -157,6 +158,8 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 #if defined(COROBASE) || defined(PILO)
   int n_done = 0;
   bool done[N_CORO];
+  Token token[N_CORO];
+
 #if COROBASE
   PROMISE(void) coro[N_CORO];
 #else
@@ -164,8 +167,9 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 #endif
   for (int i_coro=0; i_coro<N_CORO; i_coro++) {
     done[i_coro] = false;
+    enter(token[i_coro]);
 #if COROBASE
-    coro[i_coro] = corobase_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token, hkg,
+    coro[i_coro] = corobase_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
 				 i_coro, n_done, done[i_coro]);
 #else
 #endif
@@ -178,11 +182,13 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
         coro[i_coro].resume();
     }
   } while (n_done != N_CORO);
+  for (int i_coro=0; i_coro<N_CORO; i_coro++) {
+    leave(token[i_coro]);
+  }
 #else
-  original_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token, hkg);
+  original_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, hkg);
 #endif
   
-  leave(token);
   SiloResult[thid].local_commit_counts_ = lcl_cmt_cnt;
   SiloResult[thid].local_abort_counts_ = lcl_abt_cnt;
 } catch (std::exception &e) {
