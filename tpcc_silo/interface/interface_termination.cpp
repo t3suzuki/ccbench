@@ -17,10 +17,15 @@ Status abort(Token token) {  // NOLINT
   return Status::OK;
 }
 
-inline Status
-lock_wset(Token token, tid_word &max_wset)
-{
+Status commit(Token token) {  // NOLINT
   auto *ti = static_cast<session_info *>(token);
+  tid_word max_rset;
+  tid_word max_wset;
+
+  // Phase 1: Sort lock list;
+  std::sort(ti->get_write_set().begin(), ti->get_write_set().end());
+
+  // Phase 2: Lock write set;
   tid_word expected;
   tid_word desired;
   for (auto itr = ti->get_write_set().begin(); itr != ti->get_write_set().end();
@@ -31,7 +36,8 @@ lock_wset(Token token, tid_word &max_wset)
     for (;;) {
       if (expected.get_lock()) {
 #if 1
-        if (itr != ti->get_write_set().begin()) ti->unlock_write_set();
+	ti->unlock_write_set(ti->get_write_set().begin(), itr);
+	abort(token);
         return Status::ERR_WRITE_LOCK;
 #else	
         expected.get_obj() =
@@ -55,22 +61,6 @@ lock_wset(Token token, tid_word &max_wset)
 
     max_wset = std::max(max_wset, expected);
   }
-  return Status::OK;
-}
-
-  
-Status commit(Token token) {  // NOLINT
-  auto *ti = static_cast<session_info *>(token);
-  tid_word max_rset;
-  tid_word max_wset;
-
-  // Phase 1: Sort lock list;
-  std::sort(ti->get_write_set().begin(), ti->get_write_set().end());
-
-  // Phase 2: Lock write set;
-  Status status = lock_wset(ti, max_wset);
-  if (status != Status::OK)
-    return status;
 
   // Serialization point
   asm volatile("":: : "memory");  // NOLINT
