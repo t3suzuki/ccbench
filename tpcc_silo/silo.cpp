@@ -199,6 +199,13 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 thread_local tcalloc coroutine_allocator;
 
 int main(int argc, char *argv[]) try {
+
+#if COROBASE
+  printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+#else
+  printf("use original.\n");
+#endif
+
   //gflags::SetUsageMessage("Silo benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
