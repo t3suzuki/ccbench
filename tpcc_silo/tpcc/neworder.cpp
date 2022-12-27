@@ -32,7 +32,33 @@ bool get_warehouse(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
   return true;
 }
 
-
+bool get_warehouse_pref(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
+{
+  SimpleKey<8> w_key;
+  TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+  Tuple *tuple;
+  Status stat = search_key_pref(Storage::WAREHOUSE, w_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  return true;
+}
+  
+PILO_PROMISE(bool) get_warehouse_pilo(uint16_t w_id, const TPCC::Warehouse*& ware)
+{
+  SimpleKey<8> w_key;
+  TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+  Tuple *tuple;
+  Status stat = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    PILO_RETURN false;
+  }
+  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  PILO_RETURN true;
+}
+  
 bool get_customer(
   Token& token, uint32_t c_id, uint8_t d_id, uint16_t w_id,
   const TPCC::Customer*& cust)
@@ -49,6 +75,21 @@ bool get_customer(
   return true;
 }
 
+bool get_customer_pref(
+  uint32_t c_id, uint8_t d_id, uint16_t w_id,
+  const TPCC::Customer*& cust)
+{
+  SimpleKey<8> c_key;
+  TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
+  Tuple *tuple;
+  Status stat = search_key_pref(Storage::CUSTOMER, c_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    return false;
+  }
+  cust = &tuple->get_value().cast_to<TPCC::Customer>();
+  return true;
+}
+  
 PROMISE(bool) get_customer_coro(
   Token& token, uint32_t c_id, uint8_t d_id, uint16_t w_id,
   const TPCC::Customer*& cust)
@@ -103,6 +144,28 @@ bool get_and_update_district(
   return true;
 }
 
+bool get_and_update_district_pref(
+    uint8_t d_id, uint16_t w_id,
+    const TPCC::District*& dist)
+{
+  SimpleKey<8> d_key;
+  TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+  Tuple *tuple;
+  Status stat = search_key_pref(Storage::DISTRICT, d_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    return false;
+  }
+  HeapObject d_obj;
+  d_obj.allocate<TPCC::District>();
+  TPCC::District& new_dist = d_obj.ref();
+  const TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+  memcpy(&new_dist, &old_dist, sizeof(new_dist));
+  new_dist.D_NEXT_O_ID++;
+  dist = &new_dist;
+  return true;
+}
+
+  
 PROMISE(bool) get_and_update_district_coro(
     Token& token, uint8_t d_id, uint16_t w_id,
     const TPCC::District*& dist)
@@ -163,6 +226,31 @@ bool insert_order(
   return true;
 }
 
+bool insert_order_pref(
+  uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
+  uint8_t ol_cnt, bool remote,
+  const TPCC::Order*& ord)
+{
+  HeapObject o_obj;
+  o_obj.allocate<TPCC::Order>();
+  TPCC::Order& new_ord = o_obj.ref();
+  new_ord.O_ID = o_id;
+  new_ord.O_D_ID = d_id;
+  new_ord.O_W_ID = w_id;
+  new_ord.O_C_ID = c_id;
+  new_ord.O_ENTRY_D = ccbench::epoch::get_lightweight_timestamp();
+  new_ord.O_OL_CNT = ol_cnt;
+  new_ord.O_ALL_LOCAL = (remote ? 0 : 1);
+  SimpleKey<8> o_key;
+  TPCC::Order::CreateKey(new_ord.O_W_ID, new_ord.O_D_ID, new_ord.O_ID, o_key.ptr());
+  Status sta = insert_pref(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    return false;
+  }
+  ord = &new_ord;
+  return true;
+}
+
 PROMISE(bool) insert_order_coro(
   Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
   uint8_t ol_cnt, bool remote,
@@ -215,6 +303,24 @@ bool insert_neworder(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
   return true;
 }
 
+
+bool insert_neworder_pref(uint32_t o_id, uint8_t d_id, uint16_t w_id)
+{
+  HeapObject no_obj;
+  no_obj.allocate<TPCC::NewOrder>();
+  TPCC::NewOrder& new_no = no_obj.ref();
+  new_no.NO_O_ID = o_id;
+  new_no.NO_D_ID = d_id;
+  new_no.NO_W_ID = w_id;
+  SimpleKey<8> no_key;
+  TPCC::NewOrder::CreateKey(new_no.NO_W_ID, new_no.NO_D_ID, new_no.NO_O_ID, no_key.ptr());
+  Status sta = insert_pref(Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    return false;
+  }
+  return true;
+}
+
 PROMISE(bool) insert_neworder_coro(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
 {
   HeapObject no_obj;
@@ -250,6 +356,19 @@ bool get_item(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
   Status sta = search_key(token, Storage::ITEM, i_key.view(), &tuple);
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     abort(token);
+    return false;
+  }
+  item = &tuple->get_value().cast_to<TPCC::Item>();
+  return true;
+}
+
+bool get_item_pref(uint32_t ol_i_id, const TPCC::Item*& item)
+{
+  SimpleKey<8> i_key;
+  TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
+  Tuple *tuple;
+  Status sta = search_key_pref(Storage::ITEM, i_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     return false;
   }
   item = &tuple->get_value().cast_to<TPCC::Item>();
@@ -322,6 +441,38 @@ bool get_and_update_stock(
       return false;
     }
     sto = &tuple->get_value().cast_to<TPCC::Stock>();
+    return true;
+}
+
+bool get_and_update_stock_pref(
+  uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
+  const TPCC::Stock*& sto)
+{
+    SimpleKey<8> s_key;
+    TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
+    Tuple *tuple;
+    Status stat = search_key_pref(Storage::STOCK, s_key.view(), &tuple);
+    if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+      return false;
+    }
+    const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
+
+    HeapObject s_obj;
+    s_obj.allocate<TPCC::Stock>();
+    TPCC::Stock& new_sto = s_obj.ref();
+    memcpy(&new_sto, &old_sto, sizeof(new_sto));
+
+    new_sto.S_YTD = old_sto.S_YTD + ol_quantity;
+    new_sto.S_ORDER_CNT = old_sto.S_ORDER_CNT + 1;
+    if (remote) {
+      new_sto.S_REMOTE_CNT = old_sto.S_REMOTE_CNT + 1;
+    }
+
+    int32_t s_quantity = old_sto.S_QUANTITY;
+    int32_t quantity = s_quantity - ol_quantity;
+    if (s_quantity <= ol_quantity + 10) quantity += 91;
+    new_sto.S_QUANTITY = quantity;
+    sto = &new_sto;
     return true;
 }
 
@@ -419,6 +570,93 @@ bool insert_orderline(
   return true;
 }
 
+bool insert_orderline_pref(
+  uint32_t o_id, uint8_t d_id, uint16_t w_id,
+  uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
+  uint8_t ol_quantity, double ol_amount, const TPCC::Stock* sto)
+{
+  HeapObject ol_obj;
+  ol_obj.allocate<TPCC::OrderLine>();
+  TPCC::OrderLine& new_ol = ol_obj.ref();
+  new_ol.OL_O_ID = o_id;
+  new_ol.OL_D_ID = d_id;
+  new_ol.OL_W_ID = w_id;
+  new_ol.OL_NUMBER = ol_num;
+  new_ol.OL_I_ID = ol_i_id;
+  new_ol.OL_SUPPLY_W_ID = ol_supply_w_id;
+  new_ol.OL_QUANTITY = ol_quantity;
+  new_ol.OL_AMOUNT = ol_amount;
+  auto pick_sdist = [&]() -> const char* {
+    switch (d_id) {
+    case 1: return sto->S_DIST_01;
+    case 2: return sto->S_DIST_02;
+    case 3: return sto->S_DIST_03;
+    case 4: return sto->S_DIST_04;
+    case 5: return sto->S_DIST_05;
+    case 6: return sto->S_DIST_06;
+    case 7: return sto->S_DIST_07;
+    case 8: return sto->S_DIST_08;
+    case 9: return sto->S_DIST_09;
+    case 10: return sto->S_DIST_10;
+    default: return nullptr; // BUG
+    }
+  };
+  copy_cstr(new_ol.OL_DIST_INFO, pick_sdist(), sizeof(new_ol.OL_DIST_INFO));
+
+  SimpleKey<8> ol_key;
+  TPCC::OrderLine::CreateKey(new_ol.OL_W_ID, new_ol.OL_D_ID, new_ol.OL_O_ID,
+                             new_ol.OL_NUMBER, ol_key.ptr());
+  Status sta = insert_pref(Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    return false;
+  }
+  return true;
+}
+  
+PROMISE(bool) insert_orderline_coro(
+  Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id,
+  uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
+  uint8_t ol_quantity, double ol_amount, const TPCC::Stock* sto)
+{
+  HeapObject ol_obj;
+  ol_obj.allocate<TPCC::OrderLine>();
+  TPCC::OrderLine& new_ol = ol_obj.ref();
+  new_ol.OL_O_ID = o_id;
+  new_ol.OL_D_ID = d_id;
+  new_ol.OL_W_ID = w_id;
+  new_ol.OL_NUMBER = ol_num;
+  new_ol.OL_I_ID = ol_i_id;
+  new_ol.OL_SUPPLY_W_ID = ol_supply_w_id;
+  new_ol.OL_QUANTITY = ol_quantity;
+  new_ol.OL_AMOUNT = ol_amount;
+  auto pick_sdist = [&]() -> const char* {
+    switch (d_id) {
+    case 1: return sto->S_DIST_01;
+    case 2: return sto->S_DIST_02;
+    case 3: return sto->S_DIST_03;
+    case 4: return sto->S_DIST_04;
+    case 5: return sto->S_DIST_05;
+    case 6: return sto->S_DIST_06;
+    case 7: return sto->S_DIST_07;
+    case 8: return sto->S_DIST_08;
+    case 9: return sto->S_DIST_09;
+    case 10: return sto->S_DIST_10;
+    default: return nullptr; // BUG
+    }
+  };
+  copy_cstr(new_ol.OL_DIST_INFO, pick_sdist(), sizeof(new_ol.OL_DIST_INFO));
+
+  SimpleKey<8> ol_key;
+  TPCC::OrderLine::CreateKey(new_ol.OL_W_ID, new_ol.OL_D_ID, new_ol.OL_O_ID,
+                             new_ol.OL_NUMBER, ol_key.ptr());
+  Status sta = AWAIT insert_coro(token, Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  RETURN true;
+}
+
 
 } // unnamed namespace
 
@@ -438,7 +676,7 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 #if 0
   if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN false;
 #else
-  auto ret_customer = get_customer(token, c_id, d_id, w_id, cust);
+  auto ret_customer = AWAIT get_customer_coro(token, c_id, d_id, w_id, cust);
   if (!ret_customer)
     RETURN false;
 #endif
@@ -460,10 +698,10 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
     if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN false;
     if (!insert_neworder(token, o_id, d_id, w_id)) RETURN false;
 #else
-    auto ret_order = insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord);
+    auto ret_order = AWAIT insert_order_coro(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord);
     if (!ret_order)
       RETURN false;
-    auto ret_neworder = insert_neworder(token, o_id, d_id, w_id);
+    auto ret_neworder = AWAIT insert_neworder_coro(token, o_id, d_id, w_id);
     if (!ret_neworder)
       RETURN false;
 #endif
@@ -498,10 +736,17 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
       double d_tax = dist->D_TAX;
       double c_discount = cust->C_DISCOUNT;
       double ol_amount = ol_quantity * i_price * (1.0 + w_tax + d_tax) * (1.0 - c_discount);
-
+#if 0
       if (!insert_orderline(
             token, o_id, d_id, w_id, ol_num, ol_i_id,
             ol_supply_w_id, ol_quantity, ol_amount, sto)) RETURN false;
+#else
+      auto ret_orderline = AWAIT insert_orderline_coro(
+						       token, o_id, d_id, w_id, ol_num, ol_i_id,
+						       ol_supply_w_id, ol_quantity, ol_amount, sto);
+      if (!ret_orderline)
+	RETURN false;
+#endif
     }
   } // end of ol loop
   if (commit(token) == Status::OK) {
@@ -511,4 +756,54 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   RETURN false;
 }
 
+
+
+PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
+{
+  bool remote = query->remote;
+  uint16_t w_id = query->w_id;
+  uint8_t d_id = query->d_id;
+  uint32_t c_id = query->c_id;
+  uint8_t ol_cnt = query->ol_cnt;
+
+  const TPCC::Warehouse *ware_pref;
+  auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref);
+  if (!ret_warehouse) PILO_RETURN false;
+  const TPCC::Customer *cust_pref;
+  if (!get_customer_pref(c_id, d_id, w_id, cust_pref)) PILO_RETURN false;
+  const TPCC::District *dist_pref;
+  if (!get_and_update_district_pref(d_id, w_id, dist_pref)) PILO_RETURN false;
+  uint32_t o_id_pref = dist_pref->D_NEXT_O_ID;
+  [[maybe_unused]] const TPCC::Order *ord_pref;
+  if (FLAGS_insert_exe) {
+    if (!insert_order_pref(o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref)) PILO_RETURN false;
+    if (!insert_neworder_pref(o_id_pref, d_id, w_id)) PILO_RETURN false;
+  }
+  for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
+    uint32_t ol_i_id = query->items[ol_num].ol_i_id;
+    uint16_t ol_supply_w_id = query->items[ol_num].ol_supply_w_id;
+    uint8_t ol_quantity = query->items[ol_num].ol_quantity;
+
+    const TPCC::Item *item;
+    if (!get_item_pref(ol_i_id, item)) PILO_RETURN false;
+
+    const TPCC::Stock *sto;
+    if (!get_and_update_stock_pref(ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) PILO_RETURN false;
+
+    if (FLAGS_insert_exe) {
+      double i_price = item->I_PRICE;
+      double w_tax = ware_pref->W_TAX;
+      double d_tax = dist_pref->D_TAX;
+      double c_discount = cust_pref->C_DISCOUNT;
+      double ol_amount = ol_quantity * i_price * (1.0 + w_tax + d_tax) * (1.0 - c_discount);
+      if (!insert_orderline_pref(
+            o_id_pref, d_id, w_id, ol_num, ol_i_id,
+            ol_supply_w_id, ol_quantity, ol_amount, sto)) PILO_RETURN false;
+    }
+  } // end of ol loop
+
+  PILO_RETURN true;
+}
+
+  
 } // namespace TPCC

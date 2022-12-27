@@ -27,6 +27,54 @@ Status search_key_local_set(session_info *ti, Storage storage, std::string_view 
 }
 
 
+Status search_key_pref(Storage storage,  // NOLINT
+		       std::string_view key, Tuple **tuple) {
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+
+  Record *rec_ptr{kohler_masstree::get_mtdb(storage).get_value(key.data(), key.size())};
+  if (rec_ptr == nullptr) {
+    *tuple = nullptr;
+    return Status::WARN_NOT_FOUND;
+  }
+  tid_word chk_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+  if (chk_tid.get_absent()) {
+    // The second condition checks
+    // whether the record you want to read should not be read by parallel
+    // insert / delete.
+    *tuple = nullptr;
+    return Status::WARN_NOT_FOUND;
+  }
+
+  *tuple = &rec_ptr->get_tuple();
+  return Status::OK;
+}
+
+
+PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+		       std::string_view key, Tuple **tuple) {
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+
+  //Record *rec_ptr{kohler_masstree::get_mtdb(storage).get_value(key.data(), key.size())};
+  auto mt = kohler_masstree::get_mtdb(storage);
+  auto r = PILO_AWAIT mt.get_value_pilo(key.data(), key.size());
+  Record *rec_ptr{r};
+  if (rec_ptr == nullptr) {
+    *tuple = nullptr;
+    PILO_RETURN Status::WARN_NOT_FOUND;
+  }
+  tid_word chk_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+  if (chk_tid.get_absent()) {
+    // The second condition checks
+    // whether the record you want to read should not be read by parallel
+    // insert / delete.
+    *tuple = nullptr;
+    PILO_RETURN Status::WARN_NOT_FOUND;
+  }
+
+  *tuple = &rec_ptr->get_tuple();
+  PILO_RETURN Status::OK;
+}
+  
 Status search_key(Token token, Storage storage,  // NOLINT
                   std::string_view key, Tuple **tuple) {
   auto *ti = static_cast<session_info *>(token);
@@ -59,7 +107,7 @@ Status search_key(Token token, Storage storage,  // NOLINT
   }
   return rr;
 }
-
+  
 PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
 				std::string_view key, Tuple **tuple) {
   auto *ti = static_cast<session_info *>(token);

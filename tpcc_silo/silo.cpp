@@ -70,8 +70,56 @@ PROMISE(void) corobase_work(const bool &quit, const uint16_t w_id, std::uint64_t
   done_coro = true;
   RETURN;
 }
-#else
+#elif PILO
+PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg, int i_coro, int &n_done, bool &done_coro)
+{
+  TPCC::Query query;
+  TPCC::query::Option query_opt;
+  
+  while (!loadAcquire(quit)) {
 
+    query.generate(w_id, query_opt);
+
+    // TODO : add backoff work.
+
+    if (loadAcquire(quit)) break;
+
+    bool validation = true;
+
+    switch (query.type) {
+      case TPCC::Q_NEW_ORDER :
+        PILO_AWAIT TPCC::run_new_order_pilo(&query.new_order);
+        validation = TPCC::run_new_order(&query.new_order, token);
+        break;
+      case TPCC::Q_PAYMENT :
+        validation = TPCC::run_payment(&query.payment, &hkg, token);
+        break;
+      case TPCC::Q_ORDER_STATUS:
+        //validation = TPCC::run_order_status(query.order_status);
+        break;
+      case TPCC::Q_DELIVERY:
+        //validation = TPCC::run_delivery(query.delivery);
+        break;
+      case TPCC::Q_STOCK_LEVEL:
+        //validation = TPCC::run_stock_level(query.stock_level);
+        break;
+      case TPCC::Q_NONE:
+        break;
+      [[maybe_unused]] defalut:
+        std::abort();
+    }
+
+    if (validation) {
+      ++lcl_cmt_cnt;
+    } else {
+      ++lcl_abt_cnt;
+    }
+  }
+  n_done++;
+  done_coro = true;
+  PILO_RETURN;
+}
+#else
 void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, TPCC::HistoryKeyGenerator &hkg)
 {
   Token token{};
@@ -93,7 +141,7 @@ void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt
     switch (query.type) {
       case TPCC::Q_NEW_ORDER :
         validation = TPCC::run_new_order(&query.new_order, token);
-        break;
+	break;
       case TPCC::Q_PAYMENT :
         validation = TPCC::run_payment(&query.payment, &hkg, token);
         break;
@@ -172,6 +220,8 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
     coro[i_coro] = corobase_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
 				 i_coro, n_done, done[i_coro]);
 #else
+    coro[i_coro] = pilo_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
+			     i_coro, n_done, done[i_coro]);
 #endif
     coro[i_coro].start();
   }

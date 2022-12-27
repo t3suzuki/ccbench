@@ -121,6 +121,15 @@ Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
     tuple_out);
 }
 
+Status insert_pref(Storage st, Tuple&& tuple)
+{
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+  if (kohler_masstree::find_record(st, tuple.get_key()) != nullptr) {
+    return Status::WARN_ALREADY_EXISTS;
+  }
+  return Status::OK;
+}
+  
 PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)
 {
   auto ret = AWAIT insert_detail_coro(

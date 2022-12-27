@@ -161,6 +161,7 @@ Status init(                                                // NOLINT
  */
 Status insert(Token token, Storage st, std::string_view key, std::string_view val, std::align_val_t val_align, Tuple** tuple_out = nullptr);
 Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
+Status insert_pref(Storage st, Tuple&& tuple);
 PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
 
 /**
@@ -290,7 +291,12 @@ Status scan_key(Token token, Storage storage,  // NOLINT
  */
 Status search_key(Token token, Storage storage,  // NOLINT
                          std::string_view key, Tuple **tuple);
+Status search_key_pref(Storage storage,  // NOLINT
+                         std::string_view key, Tuple **tuple);
 
+  PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+                         std::string_view key, Tuple **tuple);
+  
 PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
 				std::string_view key, Tuple **tuple);
   

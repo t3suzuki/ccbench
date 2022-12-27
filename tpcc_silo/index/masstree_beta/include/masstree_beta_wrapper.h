@@ -261,9 +261,23 @@ public:
     RETURN nullptr;
   }
   
+  inline PILO_PROMISE(T *) get_value_pilo(const char *key, std::size_t len_key) {  // NOLINT
+    unlocked_cursor_type lp(table_, key, len_key);
+    bool found = PILO_AWAIT lp.find_unlocked_pilo(*ti);
+    if (found) {
+      PILO_RETURN lp.value();
+    }
+    PILO_RETURN nullptr;
+  }
+
   inline PROMISE(T *) get_value_coro(std::string_view key) {
     auto v = AWAIT get_value_coro(key.data(), key.size());
     RETURN v;
+  }
+
+  inline PILO_PROMISE(T *) get_value_pilo(std::string_view key) {
+    auto v = PILO_AWAIT get_value_pilo(key.data(), key.size());
+    PILO_RETURN v;
   }
 
   T *get_value(std::string_view key) {
