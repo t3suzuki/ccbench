@@ -55,6 +55,36 @@ bool get_and_update_warehouse(
   return true;
 }
 
+PROMISE(bool) get_and_update_warehouse_coro(
+  Token& token, uint16_t w_id, double h_amount,
+  const TPCC::Warehouse*& ware)
+{
+  SimpleKey<8> w_key;
+  TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+  Tuple *tuple;
+  Status sta = AWAIT search_key_coro(token, Storage::WAREHOUSE, w_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  TPCC::Warehouse& old_ware = tuple->get_value().cast_to<TPCC::Warehouse>();
+
+  HeapObject w_obj;
+  w_obj.allocate<TPCC::Warehouse>();
+  TPCC::Warehouse& new_ware = w_obj.ref();
+  memcpy(&new_ware, &old_ware, sizeof(new_ware));
+
+  new_ware.W_YTD = old_ware.W_YTD + h_amount;
+
+  sta = AWAIT update_coro(token, Storage::WAREHOUSE, Tuple(w_key.view(), std::move(w_obj)), &tuple);
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  RETURN true;
+}
+  
 
 /** =====================================================+
  * EXEC SQL UPDATE district SET d_ytd = d_ytd + :h_amount
@@ -96,6 +126,37 @@ bool get_and_update_district(
 }
 
 
+PROMISE(bool) get_and_update_district_coro(
+  Token& token, uint8_t d_id, uint16_t w_id, double h_amount,
+  const TPCC::District*& dist)
+{
+  SimpleKey<8> d_key;
+  TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+  Tuple *tuple;
+  Status sta = AWAIT search_key_coro(token, Storage::DISTRICT, d_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+
+  HeapObject d_obj;
+  d_obj.allocate<TPCC::District>();
+  TPCC::District& new_dist = d_obj.ref();
+  memcpy(&new_dist, &old_dist, sizeof(new_dist));
+
+  new_dist.D_YTD += h_amount;
+
+  sta = AWAIT update_coro(token, Storage::DISTRICT, Tuple(d_key.view(), std::move(d_obj)), &tuple);
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  dist = &tuple->get_value().cast_to<TPCC::District>();
+  RETURN true;
+}
+  
+
 /**
  * ==========================================================
  * EXEC SQL SELECT count(c_id) INTO :namecnt
@@ -134,6 +195,24 @@ bool get_customer_key_by_last_name(
   size_t idx = (nr_same_name + 1) / 2 - 1; // midpoint.
   c_key = (*vec_ptr)[idx];
   return true;
+}
+
+PROMISE(bool) get_customer_key_by_last_name_coro(
+  uint16_t c_w_id, uint8_t c_d_id, const char* c_last, SimpleKey<8>& c_key)
+{
+  char c_last_key_buf[Customer::CLastKey::required_size()];
+  std::string_view c_last_key = Customer::CreateSecondaryKey(c_w_id, c_d_id, c_last, &c_last_key_buf[0]);
+  void *ret_ptr = AWAIT kohler_masstree::find_record_coro(Storage::SECONDARY, c_last_key);
+  assert(ret_ptr != nullptr);
+  std::vector<SimpleKey<8>> *vec_ptr;
+  std::string_view value_view = reinterpret_cast<Record *>(ret_ptr)->get_tuple().get_val();
+  assert(value_view.size() == sizeof(uintptr_t));
+  ::memcpy(&vec_ptr, value_view.data(), sizeof(uintptr_t));
+  size_t nr_same_name = vec_ptr->size();
+  assert(nr_same_name > 0);
+  size_t idx = (nr_same_name + 1) / 2 - 1; // midpoint.
+  c_key = (*vec_ptr)[idx];
+  RETURN true;
 }
 
 
@@ -208,6 +287,46 @@ bool get_and_update_customer(
 }
 
 
+PROMISE(bool) get_and_update_customer_coro(
+  Token& token, const SimpleKey<8>& c_key,
+  uint32_t c_id, uint8_t c_d_id, uint16_t c_w_id, uint8_t d_id, uint16_t w_id,
+  double h_amount)
+{
+  Tuple *tuple;
+  Status sta = AWAIT search_key_coro(token, Storage::CUSTOMER, c_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  const TPCC::Customer& old_cust = tuple->get_value().cast_to<TPCC::Customer>();
+
+  HeapObject c_obj;
+  c_obj.allocate<TPCC::Customer>();
+  TPCC::Customer& new_cust = c_obj.ref();
+  ::memcpy(&new_cust, &old_cust, sizeof(new_cust));
+
+  new_cust.C_BALANCE += h_amount;
+  new_cust.C_YTD_PAYMENT += h_amount;
+  new_cust.C_PAYMENT_CNT += 1;
+
+  if (new_cust.C_CREDIT[0] == 'B' && new_cust.C_CREDIT[1] == 'C') {
+    size_t len = snprintf(
+      &new_cust.C_DATA[0], 501,
+      "| %4" PRIu32 " %2" PRIu8 " %4" PRIu16 " %2" PRIu16 " %4" PRIu16 " $%7.2f",
+      c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
+    assert(len <= 500);
+    len += copy_cstr(&new_cust.C_DATA[len], &old_cust.C_DATA[0], 501 - len);
+  }
+
+  sta = AWAIT update_coro(token, Storage::CUSTOMER, Tuple(c_key.view(), std::move(c_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  RETURN true;
+}
+
+
 /**
  * ================================================================================
  * EXEC SQL INSERT INTO
@@ -244,10 +363,38 @@ bool insert_history(
 }
 
 
+PROMISE(bool) insert_history_coro(
+  Token& token,
+  uint32_t c_id, uint8_t c_d_id, uint16_t c_w_id, uint8_t d_id, uint16_t w_id,
+  double h_amount, const char* w_name, const char* d_name,
+  HistoryKeyGenerator *hkg)
+{
+  HeapObject h_obj;
+  h_obj.allocate<TPCC::History>();
+  TPCC::History& new_hist = h_obj.ref();
+  new_hist.H_C_ID = c_id;
+  new_hist.H_C_D_ID = c_d_id;
+  new_hist.H_C_W_ID = c_w_id;
+  new_hist.H_D_ID = d_id;
+  new_hist.H_W_ID = w_id;
+  new_hist.H_DATE = ccbench::epoch::get_lightweight_timestamp();
+  new_hist.H_AMOUNT = h_amount;
+  ::snprintf(new_hist.H_DATA, sizeof(new_hist.H_DATA),
+             "%-10.10s    %.10s", w_name, d_name);
+
+  SimpleKey<8> h_key = hkg->get_as_simple_key();
+  Status sta = AWAIT insert_coro(token, Storage::HISTORY, Tuple(h_key.view(), std::move(h_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  RETURN true;
+}
+
 } // unnamed namespace
 
 
-bool run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token)
+PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token)
 {
   uint16_t w_id = query->w_id;
   uint16_t c_w_id = query->c_w_id;
@@ -257,31 +404,36 @@ bool run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token)
   double h_amount = query->h_amount;
 
   const TPCC::Warehouse *ware;
-  if (!get_and_update_warehouse(token, w_id, h_amount, ware)) return false;
+  auto ret_warehouse = AWAIT get_and_update_warehouse_coro(token, w_id, h_amount, ware);
+  if (!ret_warehouse) RETURN false;
   const TPCC::District *dist;
-  if (!get_and_update_district(token, d_id, w_id, h_amount, dist)) return false;
+  auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, h_amount, dist);
+  if (!ret_district) RETURN false;
 
   SimpleKey<8> c_key;
   if (query->by_last_name) {
-    if (!get_customer_key_by_last_name(c_w_id, c_d_id, query->c_last, c_key)) return false;
+    auto ret_custkey = AWAIT get_customer_key_by_last_name_coro(c_w_id, c_d_id, query->c_last, c_key);
+    if (!ret_custkey) RETURN false;
   } else {
     // search customers by c_id
     TPCC::Customer::CreateKey(c_w_id, c_d_id, c_id, c_key.ptr());
   }
-  if (!get_and_update_customer(
-        token, c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount)) return false;
+  auto ret_customer = AWAIT get_and_update_customer_coro(
+					      token, c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
+  if (!ret_customer) RETURN false;
 
   if (FLAGS_insert_exe) {
-    if (!insert_history(
+    auto ret_history = AWAIT insert_history_coro(
           token, c_id, c_d_id, c_w_id, d_id, w_id, h_amount,
-          &ware->W_NAME[0], &dist->D_NAME[0], hkg)) return false;
+          &ware->W_NAME[0], &dist->D_NAME[0], hkg);
+    if (!ret_history) RETURN false;
   }
 
   if (commit(token) == Status::OK) {
-    return true;
+    RETURN true;
   }
   abort(token);
-  return false;
+  RETURN false;
 }
 
 

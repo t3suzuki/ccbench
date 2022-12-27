@@ -32,6 +32,20 @@ bool get_warehouse(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
   return true;
 }
 
+PROMISE(bool) get_warehouse_coro(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
+{
+  SimpleKey<8> w_key;
+  TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+  Tuple *tuple;
+  Status stat = AWAIT search_key_coro(token, Storage::WAREHOUSE, w_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  RETURN true;
+}
+  
 bool get_warehouse_pref(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
 {
   SimpleKey<8> w_key;
@@ -775,7 +789,12 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   uint8_t ol_cnt = query->ol_cnt;
 
   const TPCC::Warehouse *ware;
+#if 0
   if (!get_warehouse(token, w_id, ware)) RETURN false;
+#else
+  auto ret_warehouse = AWAIT get_warehouse_coro(token, w_id, ware);
+  if (!ret_warehouse) RETURN false;
+#endif
 
   const TPCC::Customer *cust;
 #if 0
