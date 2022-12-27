@@ -43,7 +43,7 @@ PROMISE(void) corobase_work(const bool &quit, const uint16_t w_id, std::uint64_t
         validation = AWAIT TPCC::run_new_order(&query.new_order, token);
         break;
       case TPCC::Q_PAYMENT :
-        validation = TPCC::run_payment(&query.payment, &hkg, token);
+        validation = AWAIT TPCC::run_payment(&query.payment, &hkg, token);
         break;
       case TPCC::Q_ORDER_STATUS:
         //validation = TPCC::run_order_status(query.order_status);
@@ -92,6 +92,7 @@ PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_
         validation = TPCC::run_new_order(&query.new_order, token);
         break;
       case TPCC::Q_PAYMENT :
+        PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg);
         validation = TPCC::run_payment(&query.payment, &hkg, token);
         break;
       case TPCC::Q_ORDER_STATUS:
