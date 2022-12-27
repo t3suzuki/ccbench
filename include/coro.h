@@ -394,11 +394,13 @@ inline unsigned long long my_rdtsc() {
 #else
 #define SUSPEND co_await std::experimental::suspend_always{}
 #endif
+#define YIELD co_await std::experimental::suspend_always{}
 #else
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
   #define SUSPEND
+  #define YIELD
 #endif
 
 #if PILO

@@ -103,6 +103,32 @@ bool get_and_update_district(
   return true;
 }
 
+PROMISE(bool) get_and_update_district_coro(
+    Token& token, uint8_t d_id, uint16_t w_id,
+    const TPCC::District*& dist)
+{
+  SimpleKey<8> d_key;
+  TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+  Tuple *tuple;
+  Status stat = AWAIT search_key_coro(token, Storage::DISTRICT, d_key.view(), &tuple);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  HeapObject d_obj;
+  d_obj.allocate<TPCC::District>();
+  TPCC::District& new_dist = d_obj.ref();
+  const TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+  memcpy(&new_dist, &old_dist, sizeof(new_dist));
+  new_dist.D_NEXT_O_ID++;
+  stat = AWAIT update_coro(token, Storage::DISTRICT, Tuple(d_key.view(), std::move(d_obj)), &tuple);
+  if (stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    RETURN false;
+  }
+  dist = &tuple->get_value().cast_to<TPCC::District>();
+  RETURN true;
+}
 
 /**
  * =========================================+
@@ -418,7 +444,13 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 #endif
 
   const TPCC::District *dist;
+#if 0
   if (!get_and_update_district(token, d_id, w_id, dist)) RETURN false;
+#else
+  auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, dist);
+  if (!ret_district)
+    RETURN false;
+#endif
 
   uint32_t o_id = dist->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord;

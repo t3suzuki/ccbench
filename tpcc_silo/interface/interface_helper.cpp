@@ -119,6 +119,41 @@ Status read_record(Record &res, const Record* dest) {  // NOLINT
   return Status::OK;
 }
 
+
+PROMISE(Status) read_record_coro(Record &res, const Record* dest) {  // NOLINT
+  tid_word f_check;
+  tid_word s_check;  // first_check, second_check for occ
+
+  f_check.set_obj(loadAcquire(dest->get_tidw().get_obj()));
+
+  for (;;) {
+    while (f_check.get_lock()) {
+      YIELD;
+      f_check.set_obj(loadAcquire(dest->get_tidw().get_obj()));
+    }
+
+    if (f_check.get_absent()) {
+      RETURN Status::WARN_CONCURRENT_DELETE;
+      // other thread is inserting this record concurrently,
+      // but it isn't committed yet.
+    }
+
+    Tuple& sc_tup = res.get_tuple();
+    const Tuple& dest_tup = dest->get_tuple();
+    sc_tup.set_key(dest_tup.get_key());
+    sc_tup.set_value_shallow(dest_tup);
+
+    s_check.set_obj(loadAcquire(dest->get_tidw().get_obj()));
+    if (f_check == s_check) {
+      break;
+    }
+    f_check = s_check;
+  }
+
+  res.set_tidw(f_check);
+  RETURN Status::OK;
+}
+  
 void write_phase(session_info *ti, const tid_word &max_r_set,
                  const tid_word &max_w_set) {
   masstree_wrapper<Record>::thread_init(cached_sched_getcpu());

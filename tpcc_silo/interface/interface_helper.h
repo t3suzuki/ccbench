@@ -20,6 +20,7 @@ namespace ccbench {
  * but it isn't committed yet.
  */
 Status read_record(Record &res, const Record *dest);  // NOLINT
+  PROMISE(Status) read_record_coro(Record &res, const Record *dest);  // NOLINT
 
 /**
  * @brief Transaction begins.

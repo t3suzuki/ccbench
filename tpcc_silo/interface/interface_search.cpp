@@ -88,7 +88,7 @@ PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
   }
 
   read_set_obj rs_ob(storage, rec_ptr);
-  Status rr = read_record(rs_ob.get_rec_read(), rec_ptr);
+  Status rr = AWAIT read_record_coro(rs_ob.get_rec_read(), rec_ptr);
   if (rr == Status::OK) {
     ti->get_read_set().emplace_back(std::move(rs_ob));
     *tuple = &ti->get_read_set().back().get_rec_read().get_tuple();
