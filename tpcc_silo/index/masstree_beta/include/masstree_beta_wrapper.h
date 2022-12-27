@@ -331,6 +331,7 @@ public:
    */
   static void *find_record(Storage st, std::string_view key);
   static PROMISE(void *) find_record_coro(Storage st, std::string_view key);
+  static PILO_PROMISE(void *) find_record_pilo(Storage st, std::string_view key);
 
   static masstree_wrapper<Record> &get_mtdb(Storage st) {
     return MTDB.at(static_cast<std::uint32_t>(st));

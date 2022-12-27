@@ -75,19 +75,19 @@ bool get_customer(
   return true;
 }
 
-bool get_customer_pref(
+PILO_PROMISE(bool) get_customer_pilo(
   uint32_t c_id, uint8_t d_id, uint16_t w_id,
   const TPCC::Customer*& cust)
 {
   SimpleKey<8> c_key;
   TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
   Tuple *tuple;
-  Status stat = search_key_pref(Storage::CUSTOMER, c_key.view(), &tuple);
+  Status stat = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &tuple);
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-    return false;
+    PILO_RETURN false;
   }
   cust = &tuple->get_value().cast_to<TPCC::Customer>();
-  return true;
+  PILO_RETURN true;
 }
   
 PROMISE(bool) get_customer_coro(
@@ -144,16 +144,16 @@ bool get_and_update_district(
   return true;
 }
 
-bool get_and_update_district_pref(
+PILO_PROMISE(bool) get_and_update_district_pilo(
     uint8_t d_id, uint16_t w_id,
     const TPCC::District*& dist)
 {
   SimpleKey<8> d_key;
   TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
   Tuple *tuple;
-  Status stat = search_key_pref(Storage::DISTRICT, d_key.view(), &tuple);
+  Status stat = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &tuple);
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-    return false;
+    PILO_RETURN false;
   }
   HeapObject d_obj;
   d_obj.allocate<TPCC::District>();
@@ -162,7 +162,7 @@ bool get_and_update_district_pref(
   memcpy(&new_dist, &old_dist, sizeof(new_dist));
   new_dist.D_NEXT_O_ID++;
   dist = &new_dist;
-  return true;
+  PILO_RETURN true;
 }
 
   
@@ -226,7 +226,7 @@ bool insert_order(
   return true;
 }
 
-bool insert_order_pref(
+PILO_PROMISE(bool) insert_order_pilo(
   uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
   uint8_t ol_cnt, bool remote,
   const TPCC::Order*& ord)
@@ -243,12 +243,12 @@ bool insert_order_pref(
   new_ord.O_ALL_LOCAL = (remote ? 0 : 1);
   SimpleKey<8> o_key;
   TPCC::Order::CreateKey(new_ord.O_W_ID, new_ord.O_D_ID, new_ord.O_ID, o_key.ptr());
-  Status sta = insert_pref(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
+  Status sta = PILO_AWAIT insert_pilo(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
   if (sta == Status::WARN_NOT_FOUND) {
-    return false;
+    PILO_RETURN false;
   }
   ord = &new_ord;
-  return true;
+  PILO_RETURN true;
 }
 
 PROMISE(bool) insert_order_coro(
@@ -319,6 +319,23 @@ bool insert_neworder_pref(uint32_t o_id, uint8_t d_id, uint16_t w_id)
     return false;
   }
   return true;
+}
+
+PILO_PROMISE(bool) insert_neworder_pilo(uint32_t o_id, uint8_t d_id, uint16_t w_id)
+{
+  HeapObject no_obj;
+  no_obj.allocate<TPCC::NewOrder>();
+  TPCC::NewOrder& new_no = no_obj.ref();
+  new_no.NO_O_ID = o_id;
+  new_no.NO_D_ID = d_id;
+  new_no.NO_W_ID = w_id;
+  SimpleKey<8> no_key;
+  TPCC::NewOrder::CreateKey(new_no.NO_W_ID, new_no.NO_D_ID, new_no.NO_O_ID, no_key.ptr());
+  Status sta = PILO_AWAIT insert_pilo(Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    PILO_RETURN false;
+  }
+  PILO_RETURN true;
 }
 
 PROMISE(bool) insert_neworder_coro(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
@@ -770,14 +787,18 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
   auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref);
   if (!ret_warehouse) PILO_RETURN false;
   const TPCC::Customer *cust_pref;
-  if (!get_customer_pref(c_id, d_id, w_id, cust_pref)) PILO_RETURN false;
+  auto ret_customer = PILO_AWAIT get_customer_pilo(c_id, d_id, w_id, cust_pref);
+  if (!ret_customer) PILO_RETURN false;
   const TPCC::District *dist_pref;
-  if (!get_and_update_district_pref(d_id, w_id, dist_pref)) PILO_RETURN false;
+  auto ret_district = PILO_AWAIT get_and_update_district_pilo(d_id, w_id, dist_pref);
+  if (!ret_district) PILO_RETURN false;
   uint32_t o_id_pref = dist_pref->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord_pref;
   if (FLAGS_insert_exe) {
-    if (!insert_order_pref(o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref)) PILO_RETURN false;
-    if (!insert_neworder_pref(o_id_pref, d_id, w_id)) PILO_RETURN false;
+    auto ret_order = PILO_AWAIT insert_order_pilo(o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref);
+    if (!ret_order) PILO_RETURN false;
+    auto ret_neworder = PILO_AWAIT insert_neworder_pilo(o_id_pref, d_id, w_id);
+    if (!ret_neworder) PILO_RETURN false;
   }
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
     uint32_t ol_i_id = query->items[ol_num].ol_i_id;

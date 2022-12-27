@@ -163,6 +163,7 @@ Status insert(Token token, Storage st, std::string_view key, std::string_view va
 Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
 Status insert_pref(Storage st, Tuple&& tuple);
 PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
+PILO_PROMISE(Status) insert_pilo(Storage st, Tuple&& tuple);
 
 /**
  * @brief leave session
