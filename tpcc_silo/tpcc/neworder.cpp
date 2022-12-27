@@ -392,6 +392,19 @@ bool get_item_pref(uint32_t ol_i_id, const TPCC::Item*& item)
   return true;
 }
 
+PILO_PROMISE(bool) get_item_pilo(uint32_t ol_i_id, const TPCC::Item*& item)
+{
+  SimpleKey<8> i_key;
+  TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
+  Tuple *tuple;
+  Status sta = PILO_AWAIT search_key_pilo(Storage::ITEM, i_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    PILO_RETURN false;
+  }
+  item = &tuple->get_value().cast_to<TPCC::Item>();
+  PILO_RETURN true;
+}
+
 PROMISE(bool) get_item_coro(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
 {
   SimpleKey<8> i_key;
@@ -491,6 +504,38 @@ bool get_and_update_stock_pref(
     new_sto.S_QUANTITY = quantity;
     sto = &new_sto;
     return true;
+}
+
+PILO_PROMISE(bool) get_and_update_stock_pilo(
+  uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
+  const TPCC::Stock*& sto)
+{
+    SimpleKey<8> s_key;
+    TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
+    Tuple *tuple;
+    Status stat = PILO_AWAIT search_key_pilo(Storage::STOCK, s_key.view(), &tuple);
+    if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+      PILO_RETURN false;
+    }
+    const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
+
+    HeapObject s_obj;
+    s_obj.allocate<TPCC::Stock>();
+    TPCC::Stock& new_sto = s_obj.ref();
+    memcpy(&new_sto, &old_sto, sizeof(new_sto));
+
+    new_sto.S_YTD = old_sto.S_YTD + ol_quantity;
+    new_sto.S_ORDER_CNT = old_sto.S_ORDER_CNT + 1;
+    if (remote) {
+      new_sto.S_REMOTE_CNT = old_sto.S_REMOTE_CNT + 1;
+    }
+
+    int32_t s_quantity = old_sto.S_QUANTITY;
+    int32_t quantity = s_quantity - ol_quantity;
+    if (s_quantity <= ol_quantity + 10) quantity += 91;
+    new_sto.S_QUANTITY = quantity;
+    sto = &new_sto;
+    PILO_RETURN true;
 }
 
 
@@ -629,7 +674,50 @@ bool insert_orderline_pref(
   }
   return true;
 }
-  
+
+PILO_PROMISE(bool) insert_orderline_pilo(
+  uint32_t o_id, uint8_t d_id, uint16_t w_id,
+  uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
+  uint8_t ol_quantity, double ol_amount, const TPCC::Stock* sto)
+{
+  HeapObject ol_obj;
+  ol_obj.allocate<TPCC::OrderLine>();
+  TPCC::OrderLine& new_ol = ol_obj.ref();
+  new_ol.OL_O_ID = o_id;
+  new_ol.OL_D_ID = d_id;
+  new_ol.OL_W_ID = w_id;
+  new_ol.OL_NUMBER = ol_num;
+  new_ol.OL_I_ID = ol_i_id;
+  new_ol.OL_SUPPLY_W_ID = ol_supply_w_id;
+  new_ol.OL_QUANTITY = ol_quantity;
+  new_ol.OL_AMOUNT = ol_amount;
+  auto pick_sdist = [&]() -> const char* {
+    switch (d_id) {
+    case 1: return sto->S_DIST_01;
+    case 2: return sto->S_DIST_02;
+    case 3: return sto->S_DIST_03;
+    case 4: return sto->S_DIST_04;
+    case 5: return sto->S_DIST_05;
+    case 6: return sto->S_DIST_06;
+    case 7: return sto->S_DIST_07;
+    case 8: return sto->S_DIST_08;
+    case 9: return sto->S_DIST_09;
+    case 10: return sto->S_DIST_10;
+    default: return nullptr; // BUG
+    }
+  };
+  copy_cstr(new_ol.OL_DIST_INFO, pick_sdist(), sizeof(new_ol.OL_DIST_INFO));
+
+  SimpleKey<8> ol_key;
+  TPCC::OrderLine::CreateKey(new_ol.OL_W_ID, new_ol.OL_D_ID, new_ol.OL_O_ID,
+                             new_ol.OL_NUMBER, ol_key.ptr());
+  Status sta = PILO_AWAIT insert_pilo(Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    PILO_RETURN false;
+  }
+  PILO_RETURN true;
+}
+
 PROMISE(bool) insert_orderline_coro(
   Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id,
   uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
@@ -806,10 +894,12 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
-    if (!get_item_pref(ol_i_id, item)) PILO_RETURN false;
+    auto ret_item = PILO_AWAIT get_item_pilo(ol_i_id, item);
+    if (!ret_item) PILO_RETURN false;
 
     const TPCC::Stock *sto;
-    if (!get_and_update_stock_pref(ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) PILO_RETURN false;
+    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+    if (!ret_stock) PILO_RETURN false;
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
@@ -817,9 +907,10 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
       double d_tax = dist_pref->D_TAX;
       double c_discount = cust_pref->C_DISCOUNT;
       double ol_amount = ol_quantity * i_price * (1.0 + w_tax + d_tax) * (1.0 - c_discount);
-      if (!insert_orderline_pref(
-            o_id_pref, d_id, w_id, ol_num, ol_i_id,
-            ol_supply_w_id, ol_quantity, ol_amount, sto)) PILO_RETURN false;
+      auto ret_orderline = PILO_AWAIT insert_orderline_pilo(
+							    o_id_pref, d_id, w_id, ol_num, ol_i_id,
+							    ol_supply_w_id, ol_quantity, ol_amount, sto);
+      if (!ret_orderline) PILO_RETURN false;
     }
   } // end of ol loop
 
