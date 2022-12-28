@@ -421,9 +421,11 @@ inline unsigned long long my_rdtsc() {
 #else
 #define PILO_SUSPEND co_await std::experimental::suspend_always{}
 #endif
+#define PILO_YIELD co_await std::experimental::suspend_always{}
 #else
   #define PILO_PROMISE(t) t
   #define PILO_RETURN return
   #define PILO_AWAIT
   #define PILO_SUSPEND
+  #define PILO_YIELD
 #endif

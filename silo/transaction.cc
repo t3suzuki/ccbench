@@ -123,6 +123,7 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
   for (;;) {
     while (expected.lock) {
       expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+      YIELD;
     }
 
     //(b) checks whether the record is the latest version
@@ -161,16 +162,21 @@ FINISH_READ:
 
 
 #if MYRW
-void TxnExecutor::myread(const Procedure &pro) {
+PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
   std::uint64_t key = pro.key_;
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
 #endif
 
+  /**
+   * read-own-writes or re-read from local read set.
+   */
+  if (searchReadSet(key) || searchWriteSet(key)) PILO_RETURN;
+  
   Tuple *tuple = (Tuple *)pro.tuple;
   if (tuple->tidword_.latest == 0) {
 #if MASSTREE_USE
-    MT.get_value_coro(key, tuple);
+    MT.get_value(key);
 #if ADD_ANALYSIS
     ++sres_->local_tree_traversal_;
 #endif
@@ -179,15 +185,11 @@ void TxnExecutor::myread(const Procedure &pro) {
 #endif
   }
   
+  
   // these variable cause error (-fpermissive)
   // "crosses initialization of ..."
   // So it locate before first goto instruction.
   Tidword expected, check;
-
-  /**
-   * read-own-writes or re-read from local read set.
-   */
-  if (searchReadSet(key) || searchWriteSet(key)) goto FINISH_READ;
 
   //(a) reads the TID word, spinning until the lock is clear
 
@@ -198,6 +200,7 @@ void TxnExecutor::myread(const Procedure &pro) {
   for (;;) {
     while (expected.lock) {
       expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+      PILO_YIELD;
     }
 
     //(b) checks whether the record is the latest version
@@ -226,12 +229,10 @@ void TxnExecutor::myread(const Procedure &pro) {
   sleepTics(SLEEP_READ_PHASE);
 #endif
 
-FINISH_READ:
-
 #if ADD_ANALYSIS
   sres_->local_read_latency_ += rdtscp() - start;
 #endif
-  return;
+  PILO_RETURN;
 }
 #endif
 

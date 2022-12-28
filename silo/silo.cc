@@ -149,11 +149,11 @@ RETRY:
          ++itr) {
 #if MYRW
       if ((*itr).ope_ == Ope::READ) {
-        trans.myread((*itr));
+        PILO_AWAIT trans.myread((*itr));
       } else if ((*itr).ope_ == Ope::WRITE) {
         trans.mywrite((*itr));
       } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
-        trans.myread((*itr));
+        PILO_AWAIT trans.myread((*itr));
         trans.mywrite((*itr));
       } else {
         ERR;
