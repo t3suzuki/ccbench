@@ -24,9 +24,8 @@ Status kohler_masstree::insert_record(Storage st, std::string_view key, Record *
 PROMISE(Status) kohler_masstree::insert_record_coro(Storage st, std::string_view key, Record *record) {
   masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
   auto mt = get_mtdb(st);
-  AWAIT mt.insert_value_coro(key, record);
-  Status insert_result;
-  RETURN insert_result;
+  auto res = AWAIT mt.insert_value_coro(key, record);
+  RETURN res;
 }
   
 void *
