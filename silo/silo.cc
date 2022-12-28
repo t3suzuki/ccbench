@@ -353,9 +353,14 @@ unsigned long long current_my_time;
 void my_time_func()
 {
   setThreadAffinity(MY_TIME_CORE);
+
+  unsigned long long local_time = __rdtsc();
   for (;;) {
-    current_my_time = __rdtsc();
-    _mm_pause();
+    while (local_time - current_my_time < TSC_US) {
+      local_time = __rdtsc();
+      _mm_pause();
+    }
+    current_my_time = local_time;
   }
 }
 #endif
