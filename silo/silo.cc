@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <signal.h>
 #include <algorithm>
 #include <cctype>
 
@@ -350,29 +351,56 @@ thread_local tcalloc coroutine_allocator;
 #if MY_TIME_CORE
 unsigned long long current_my_time;
 
-void my_time_func()
+void my_time_func(const bool &all_done)
 {
   setThreadAffinity(MY_TIME_CORE);
 
   unsigned long long local_time = __rdtsc();
   for (;;) {
-    while (local_time - current_my_time < TSC_US) {
+    while (local_time - current_my_time < TSC_US/4) {
       local_time = __rdtsc();
       _mm_pause();
     }
     current_my_time = local_time;
+    if (all_done)
+      break;
   }
 }
 #endif
 
+void
+run_perf(const bool &start, const bool &quit)
+{
+  while (!loadAcquire(start)) _mm_pause();
+
+#if 1
+  int pid = getpid();
+  int cpid = fork();
+  if(cpid == 0) {
+    char buf[50];
+    printf("perf...\n");
+    //sprintf(buf, "perf stat -ddd -p %d   > stat.log 2>&1", pid);
+    sprintf(buf, "perf record -C 0 -g");
+    execl("/bin/sh", "sh", "-c", buf, NULL);
+  } else {
+    setpgid(cpid, 0);
+    while (!loadAcquire(quit)) _mm_pause();
+    kill(-cpid, SIGINT);
+  }
+#endif
+}
+
 int main(int argc, char *argv[]) try {
 #if MY_TIME_CORE
-  std::thread time_thread(my_time_func);
+  bool all_done = false;
+  std::thread time_thread(my_time_func, std::ref(all_done));
   printf("Run my_time_func @ core %d...\n", MY_TIME_CORE);
 #endif
   
 #if COROBASE
   printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+#elif PILO
+  printf("use PILO N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
 #else
   printf("use original.\n");
 #endif
@@ -383,12 +411,16 @@ int main(int argc, char *argv[]) try {
 
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
+
   initResult();
   std::vector<char> readys(FLAGS_thread_num);
   std::vector<std::thread> thv;
   for (size_t i = 0; i < FLAGS_thread_num; ++i)
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
+  
+  //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+  
   waitForReady(readys);
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
@@ -403,6 +435,12 @@ int main(int argc, char *argv[]) try {
   ShowOptParameters();
   SiloResult[0].displayAllResult(FLAGS_clocks_per_us, FLAGS_extime,
                                  FLAGS_thread_num);
+
+  sleep(1);
+#if MY_TIME_CORE
+  all_done = true;
+  time_thread.join();
+#endif
 
   return 0;
 } catch (bad_alloc) {
