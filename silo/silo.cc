@@ -351,7 +351,7 @@ thread_local tcalloc coroutine_allocator;
 #if MY_TIME_CORE
 unsigned long long current_my_time;
 
-void my_time_func()
+void my_time_func(const bool &all_done)
 {
   setThreadAffinity(MY_TIME_CORE);
 
@@ -362,6 +362,8 @@ void my_time_func()
       _mm_pause();
     }
     current_my_time = local_time;
+    if (all_done)
+      break;
   }
 }
 #endif
@@ -390,14 +392,15 @@ run_perf(const bool &start, const bool &quit)
 
 int main(int argc, char *argv[]) try {
 #if MY_TIME_CORE
-  std::thread time_thread(my_time_func);
+  bool all_done = false;
+  std::thread time_thread(my_time_func, std::ref(all_done));
   printf("Run my_time_func @ core %d...\n", MY_TIME_CORE);
 #endif
   
 #if COROBASE
-  printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+  printf("use CoroBase. N_CORO=%d\n", N_CORO);
 #elif PILO
-  printf("use PILO N_CORO=%d, tR=%dus, MYRW=%d\n", N_CORO, TR_US, MYRW);
+  printf("use PILO N_CORO=%d\n", N_CORO);
 #else
   printf("use original.\n");
 #endif
@@ -408,6 +411,7 @@ int main(int argc, char *argv[]) try {
 
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
+
   initResult();
   std::vector<char> readys(FLAGS_thread_num);
   std::vector<std::thread> thv;
@@ -433,6 +437,11 @@ int main(int argc, char *argv[]) try {
                                  FLAGS_thread_num);
 
   sleep(1);
+  
+#if MY_TIME_CORE
+  all_done = true;
+  time_thread.join();
+#endif
 
   return 0;
 } catch (bad_alloc) {

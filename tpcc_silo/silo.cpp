@@ -249,10 +249,48 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 
 thread_local tcalloc coroutine_allocator;
 
+#if MY_TIME_CORE
+unsigned long long current_my_time;
+
+#define _GNU_SOURCE
+#include <sched.h>
+
+void my_setThreadAffinity(int core)
+{
+  cpu_set_t cpu_set;
+  CPU_ZERO(&cpu_set);
+  CPU_SET(core, &cpu_set);
+  sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set);
+}
+
+void my_time_func(const bool &all_done)
+{
+  my_setThreadAffinity(MY_TIME_CORE);
+
+  unsigned long long local_time = __rdtsc();
+  for (;;) {
+    while (local_time - current_my_time < TSC_US/4) {
+      local_time = __rdtsc();
+      _mm_pause();
+    }
+    current_my_time = local_time;
+    if (all_done)
+      break;
+  }
+}
+#endif
+
 int main(int argc, char *argv[]) try {
+#if MY_TIME_CORE
+  bool all_done = false;
+  std::thread time_thread(my_time_func, std::ref(all_done));
+  printf("Run my_time_func @ core %d...\n", MY_TIME_CORE);
+#endif
 
 #if COROBASE
-  printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+  printf("use CoroBase. N_CORO=%d\n", N_CORO);
+#elif PILO
+  printf("use PILO N_CORO=%d\n", N_CORO);
 #else
   printf("use original.\n");
 #endif
@@ -295,6 +333,12 @@ int main(int argc, char *argv[]) try {
                                  FLAGS_thread_num);
 
   fin();
+  sleep(1);
+#if MY_TIME_CORE
+  all_done = true;
+  time_thread.join();
+#endif
+
   return 0;
 } catch (std::bad_alloc &) {
   std::cout << __FILE__ << " : " << __LINE__ << " : bad_alloc error." << std::endl;

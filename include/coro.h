@@ -383,10 +383,10 @@ inline unsigned long long my_rdtsc() {
 #if defined(TR_US)
 #define SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
-    tsc0 = get_time();                                                  \
+    tsc0 = get_time();						\
     while (1) {                                                         \
-      tsc1 = get_time();                                                        \
-      if (tsc1 - tsc0 > TR_US * TSC_US)                                 \
+      tsc1 = get_time();						\
+      if (tsc1 - tsc0 >= TR_US * TSC_US)				\
         break;                                                          \
       co_await std::experimental::suspend_always{};                     \
     }                                                                   \
@@ -410,10 +410,10 @@ inline unsigned long long my_rdtsc() {
 #if defined(TR_US)
 #define PILO_SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
-    tsc0 = __rdtsc();                                                  \
+    tsc0 = get_time();                                                  \
     while (1) {                                                         \
-      tsc1 = __rdtsc();                                                        \
-      if (tsc1 - tsc0 > TR_US * TSC_US)                                 \
+      tsc1 = get_time();                                                        \
+      if (tsc1 - tsc0 >= TR_US * TSC_US)                                 \
         break;                                                          \
       co_await std::experimental::suspend_always{};                     \
     }                                                                   \

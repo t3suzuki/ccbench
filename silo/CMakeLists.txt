@@ -116,18 +116,28 @@ target_link_libraries(silo_original ${SILO_LIBS})
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
 
-#set(MY_TIME "-DMY_TIME_CORE=9")
-set(MY_TIME "")
+set(MY_TIME "-DMY_TIME_CORE=9")
+#set(MY_TIME "")
 
-foreach(TR_US 0 1 4 16 64)
-  foreach(N_CORO 1 2 4 8 16 32 64 128 256 512)
-    add_executable(silo_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
-    set_target_properties(silo_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
-    target_link_libraries(silo_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+foreach(N_CORO 1 2 4 8)
+  add_executable(corobase_${N_CORO}coro ${SILO_SOURCES})
+  set_target_properties(corobase_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DN_CORO=${N_CORO} ${MY_TIME}")
+  target_link_libraries(corobase_${N_CORO}coro ${SILO_LIBS})
+  
+  add_executable(pilo2_${N_CORO}coro ${SILO_SOURCES})
+  set_target_properties(pilo2_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPILO=1 -DMYRW=1 -DN_CORO=${N_CORO} ${MY_TIME}")
+  target_link_libraries(pilo2_${N_CORO}coro ${SILO_LIBS})
+endforeach()
 
-    add_executable(pilo_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
-    set_target_properties(pilo_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPILO=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
-    target_link_libraries(pilo_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+foreach(TR_US 0 1 2 4 8 16 32 64)
+  foreach(N_CORO 1 2 4 8 16 32 64 128 256 512 1024)
+    add_executable(corobase_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
+    set_target_properties(corobase_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
+    target_link_libraries(corobase_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+
+    #add_executable(pilo_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
+    #set_target_properties(pilo_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPILO=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
+    #target_link_libraries(pilo_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
 
     add_executable(pilo2_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
     set_target_properties(pilo2_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPILO=1 -DMYRW=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
