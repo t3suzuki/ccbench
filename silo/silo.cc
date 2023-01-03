@@ -398,9 +398,9 @@ int main(int argc, char *argv[]) try {
 #endif
   
 #if COROBASE
-  printf("use CoroBase. N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+  printf("use CoroBase. N_CORO=%d\n", N_CORO);
 #elif PILO
-  printf("use PILO N_CORO=%d, tR=%dus\n", N_CORO, TR_US);
+  printf("use PILO N_CORO=%d\n", N_CORO);
 #else
   printf("use original.\n");
 #endif
