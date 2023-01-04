@@ -9,7 +9,6 @@ namespace TPCC {
 
 namespace {
 
-
 /**
  * =======================================================================+
  * EXEC SQL SELECT c_discount, c_last, c_credit, w_tax
@@ -159,6 +158,7 @@ bool get_and_update_district(
 }
 
 PILO_PROMISE(bool) get_and_update_district_pilo(
+						pobjs_t &pobjs,
     uint8_t d_id, uint16_t w_id,
     const TPCC::District*& dist)
 {
@@ -176,6 +176,7 @@ PILO_PROMISE(bool) get_and_update_district_pilo(
   memcpy(&new_dist, &old_dist, sizeof(new_dist));
   new_dist.D_NEXT_O_ID++;
   dist = &new_dist;
+  pobjs.emplace_back(std::move(d_obj));
   PILO_RETURN true;
 }
 
@@ -241,6 +242,7 @@ bool insert_order(
 }
 
 PILO_PROMISE(bool) insert_order_pilo(
+				     pobjs_t &pobjs,
   uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
   uint8_t ol_cnt, bool remote,
   const TPCC::Order*& ord)
@@ -258,6 +260,7 @@ PILO_PROMISE(bool) insert_order_pilo(
   SimpleKey<8> o_key;
   TPCC::Order::CreateKey(new_ord.O_W_ID, new_ord.O_D_ID, new_ord.O_ID, o_key.ptr());
   Status sta = PILO_AWAIT insert_pilo(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
+  pobjs.emplace_back(std::move(o_obj));
   if (sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
@@ -335,7 +338,7 @@ bool insert_neworder_pref(uint32_t o_id, uint8_t d_id, uint16_t w_id)
   return true;
 }
 
-PILO_PROMISE(bool) insert_neworder_pilo(uint32_t o_id, uint8_t d_id, uint16_t w_id)
+PILO_PROMISE(bool) insert_neworder_pilo(pobjs_t &pobjs, uint32_t o_id, uint8_t d_id, uint16_t w_id)
 {
   HeapObject no_obj;
   no_obj.allocate<TPCC::NewOrder>();
@@ -346,6 +349,7 @@ PILO_PROMISE(bool) insert_neworder_pilo(uint32_t o_id, uint8_t d_id, uint16_t w_
   SimpleKey<8> no_key;
   TPCC::NewOrder::CreateKey(new_no.NO_W_ID, new_no.NO_D_ID, new_no.NO_O_ID, no_key.ptr());
   Status sta = PILO_AWAIT insert_pilo(Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
+  pobjs.emplace_back(std::move(no_obj));
   if (sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
@@ -521,6 +525,7 @@ bool get_and_update_stock_pref(
 }
 
 PILO_PROMISE(bool) get_and_update_stock_pilo(
+					     pobjs_t &pobjs,
   uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
   const TPCC::Stock*& sto)
 {
@@ -549,6 +554,7 @@ PILO_PROMISE(bool) get_and_update_stock_pilo(
     if (s_quantity <= ol_quantity + 10) quantity += 91;
     new_sto.S_QUANTITY = quantity;
     sto = &new_sto;
+    pobjs.emplace_back(std::move(s_obj));
     PILO_RETURN true;
 }
 
@@ -690,6 +696,7 @@ bool insert_orderline_pref(
 }
 
 PILO_PROMISE(bool) insert_orderline_pilo(
+					 pobjs_t &pobjs,
   uint32_t o_id, uint8_t d_id, uint16_t w_id,
   uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
   uint8_t ol_quantity, double ol_amount, const TPCC::Stock* sto)
@@ -726,6 +733,7 @@ PILO_PROMISE(bool) insert_orderline_pilo(
   TPCC::OrderLine::CreateKey(new_ol.OL_W_ID, new_ol.OL_D_ID, new_ol.OL_O_ID,
                              new_ol.OL_NUMBER, ol_key.ptr());
   Status sta = PILO_AWAIT insert_pilo(Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
+  pobjs.emplace_back(std::move(ol_obj));
   if (sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
@@ -780,6 +788,12 @@ PROMISE(bool) insert_orderline_coro(
 } // unnamed namespace
 
 
+inline bool my_abort(Token &token)
+{
+  abort(token);
+  return false;
+}
+
 PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 {
   bool remote = query->remote;
@@ -790,28 +804,28 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 
   const TPCC::Warehouse *ware;
 #if 0
-  if (!get_warehouse(token, w_id, ware)) RETURN false;
+  if (!get_warehouse(token, w_id, ware)) RETURN my_abort(token);
 #else
   auto ret_warehouse = AWAIT get_warehouse_coro(token, w_id, ware);
-  if (!ret_warehouse) RETURN false;
+  if (!ret_warehouse) RETURN my_abort(token);
 #endif
 
   const TPCC::Customer *cust;
 #if 0
-  if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN false;
+  if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN my_abort(token);
 #else
   auto ret_customer = AWAIT get_customer_coro(token, c_id, d_id, w_id, cust);
   if (!ret_customer)
-    RETURN false;
+    RETURN my_abort(token);
 #endif
 
   const TPCC::District *dist;
 #if 0
-  if (!get_and_update_district(token, d_id, w_id, dist)) RETURN false;
+  if (!get_and_update_district(token, d_id, w_id, dist)) RETURN my_abort(token);
 #else
   auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, dist);
   if (!ret_district)
-    RETURN false;
+    RETURN my_abort(token);
 #endif
 
   uint32_t o_id = dist->D_NEXT_O_ID;
@@ -819,15 +833,15 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 
   if (FLAGS_insert_exe) {
 #if 0
-    if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN false;
-    if (!insert_neworder(token, o_id, d_id, w_id)) RETURN false;
+    if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN my_abort(token);
+    if (!insert_neworder(token, o_id, d_id, w_id)) RETURN my_abort(token);
 #else
     auto ret_order = AWAIT insert_order_coro(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord);
     if (!ret_order)
-      RETURN false;
+      RETURN my_abort(token);
     auto ret_neworder = AWAIT insert_neworder_coro(token, o_id, d_id, w_id);
     if (!ret_neworder)
-      RETURN false;
+      RETURN my_abort(token);
 #endif
   }
 
@@ -838,20 +852,20 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 
     const TPCC::Item *item;
 #if 0
-    if (!get_item(token, ol_i_id, item)) RETURN false;
+    if (!get_item(token, ol_i_id, item)) RETURN my_abort(token);
 #else
     auto ret_item = AWAIT get_item_coro(token, ol_i_id, item);
     if (!ret_item)
-      RETURN false;
+      RETURN my_abort(token);
 #endif
 
     const TPCC::Stock *sto;
 #if 0
-    if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) RETURN false;
+    if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) RETURN my_abort(token);
 #else
     auto ret_stock = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
     if (!ret_stock)
-      RETURN false;
+      RETURN my_abort(token);
 #endif
 
     if (FLAGS_insert_exe) {
@@ -863,23 +877,36 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 #if 0
       if (!insert_orderline(
             token, o_id, d_id, w_id, ol_num, ol_i_id,
-            ol_supply_w_id, ol_quantity, ol_amount, sto)) RETURN false;
+            ol_supply_w_id, ol_quantity, ol_amount, sto)) RETURN my_abort(token);
 #else
       auto ret_orderline = AWAIT insert_orderline_coro(
 						       token, o_id, d_id, w_id, ol_num, ol_i_id,
 						       ol_supply_w_id, ol_quantity, ol_amount, sto);
       if (!ret_orderline)
-	RETURN false;
+	RETURN my_abort(token);
 #endif
     }
   } // end of ol loop
   if (commit(token) == Status::OK) {
     RETURN true;
   }
-  abort(token);
-  RETURN false;
+  RETURN my_abort(token);
 }
 
+inline void
+free_pobjs(pobjs_t &pobjs)
+{
+  for (auto it = pobjs.begin(); it != pobjs.end(); ++it) {
+    it->reset();
+  }
+}
+
+inline bool
+my_abort_pilo(pobjs_t &pobjs)
+{
+  free_pobjs(pobjs);
+  return false;
+}
 
 
 PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
@@ -890,22 +917,24 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
   uint32_t c_id = query->c_id;
   uint8_t ol_cnt = query->ol_cnt;
 
+  pobjs_t pobjs;
+
   const TPCC::Warehouse *ware_pref;
   auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref);
-  if (!ret_warehouse) PILO_RETURN false;
+  if (!ret_warehouse) PILO_RETURN my_abort_pilo(pobjs);
   const TPCC::Customer *cust_pref;
   auto ret_customer = PILO_AWAIT get_customer_pilo(c_id, d_id, w_id, cust_pref);
-  if (!ret_customer) PILO_RETURN false;
+  if (!ret_customer) PILO_RETURN my_abort_pilo(pobjs);
   const TPCC::District *dist_pref;
-  auto ret_district = PILO_AWAIT get_and_update_district_pilo(d_id, w_id, dist_pref);
-  if (!ret_district) PILO_RETURN false;
+  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, dist_pref);
+  if (!ret_district) PILO_RETURN my_abort_pilo(pobjs);
   uint32_t o_id_pref = dist_pref->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord_pref;
   if (FLAGS_insert_exe) {
-    auto ret_order = PILO_AWAIT insert_order_pilo(o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref);
-    if (!ret_order) PILO_RETURN false;
-    auto ret_neworder = PILO_AWAIT insert_neworder_pilo(o_id_pref, d_id, w_id);
-    if (!ret_neworder) PILO_RETURN false;
+    auto ret_order = PILO_AWAIT insert_order_pilo(pobjs, o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref);
+    if (!ret_order) PILO_RETURN my_abort_pilo(pobjs);
+    auto ret_neworder = PILO_AWAIT insert_neworder_pilo(pobjs, o_id_pref, d_id, w_id);
+    if (!ret_neworder) PILO_RETURN my_abort_pilo(pobjs);
   }
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
     uint32_t ol_i_id = query->items[ol_num].ol_i_id;
@@ -914,11 +943,11 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
 
     const TPCC::Item *item;
     auto ret_item = PILO_AWAIT get_item_pilo(ol_i_id, item);
-    if (!ret_item) PILO_RETURN false;
+    if (!ret_item) PILO_RETURN my_abort_pilo(pobjs);
 
     const TPCC::Stock *sto;
-    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
-    if (!ret_stock) PILO_RETURN false;
+    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(pobjs, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+    if (!ret_stock) PILO_RETURN my_abort_pilo(pobjs);
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
@@ -926,15 +955,15 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
       double d_tax = dist_pref->D_TAX;
       double c_discount = cust_pref->C_DISCOUNT;
       double ol_amount = ol_quantity * i_price * (1.0 + w_tax + d_tax) * (1.0 - c_discount);
-      auto ret_orderline = PILO_AWAIT insert_orderline_pilo(
+      auto ret_orderline = PILO_AWAIT insert_orderline_pilo(pobjs,
 							    o_id_pref, d_id, w_id, ol_num, ol_i_id,
 							    ol_supply_w_id, ol_quantity, ol_amount, sto);
-      if (!ret_orderline) PILO_RETURN false;
+      if (!ret_orderline) PILO_RETURN my_abort_pilo(pobjs);
     }
   } // end of ol loop
 
+  free_pobjs(pobjs);
   PILO_RETURN true;
 }
 
-  
 } // namespace TPCC
