@@ -80,6 +80,7 @@ public:
     if ((tri.storage == storage) and (tri.key == std::string(key))) {
       return tri.rec;
     } else {
+      printf("miss!\n");
       return nullptr;
     }
   };

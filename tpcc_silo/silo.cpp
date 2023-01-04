@@ -98,8 +98,13 @@ PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_
 #endif
         break;
       case TPCC::Q_PAYMENT :
+#if MYRW
+        PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg, &myrw);
+        validation = TPCC::run_payment(&query.payment, &hkg, token, &myrw);
+#else
         PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg);
         validation = TPCC::run_payment(&query.payment, &hkg, token);
+#endif
         break;
       case TPCC::Q_ORDER_STATUS:
         //validation = TPCC::run_order_status(query.order_status);

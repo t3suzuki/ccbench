@@ -113,7 +113,7 @@ PILO_PROMISE(bool) get_customer_pilo(
 {
   SimpleKey<8> c_key;
   TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
-  Record *rec;
+  Record *rec = nullptr;
   Status stat = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &rec);
 #if MYRW
   myrw->rd(Storage::CUSTOMER, c_key.view(), rec);

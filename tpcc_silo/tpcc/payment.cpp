@@ -55,6 +55,36 @@ bool get_and_update_warehouse(
   return true;
 }
 
+bool get_and_update_warehouse_myrw(
+  Token& token, uint16_t w_id, double h_amount,
+  const TPCC::Warehouse*& ware, MyRW *myrw)
+{
+  SimpleKey<8> w_key;
+  TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+  Tuple *tuple;
+  Status sta = search_key_myrw(token, Storage::WAREHOUSE, w_key.view(), &tuple, myrw);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  TPCC::Warehouse& old_ware = tuple->get_value().cast_to<TPCC::Warehouse>();
+
+  HeapObject w_obj;
+  w_obj.allocate<TPCC::Warehouse>();
+  TPCC::Warehouse& new_ware = w_obj.ref();
+  memcpy(&new_ware, &old_ware, sizeof(new_ware));
+
+  new_ware.W_YTD = old_ware.W_YTD + h_amount;
+
+  sta = update(token, Storage::WAREHOUSE, Tuple(w_key.view(), std::move(w_obj)), &tuple);
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  return true;
+}
+  
 PROMISE(bool) get_and_update_warehouse_coro(
   Token& token, uint16_t w_id, double h_amount,
   const TPCC::Warehouse*& ware)
@@ -88,16 +118,19 @@ PROMISE(bool) get_and_update_warehouse_coro(
 PILO_PROMISE(bool) get_and_update_warehouse_pilo(
 						 pobjs_t &pobjs,
   uint16_t w_id, double h_amount,
-  const TPCC::Warehouse*& ware)
+						 const TPCC::Warehouse*& ware, MyRW *myrw = nullptr)
 {
   SimpleKey<8> w_key;
   TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
-  Tuple *tuple;
-  Status sta = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &tuple);
+  Record *rec = nullptr;
+  Status sta = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::WAREHOUSE, w_key.view(), rec);
+#endif
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
-  TPCC::Warehouse& old_ware = tuple->get_value().cast_to<TPCC::Warehouse>();
+  TPCC::Warehouse& old_ware = rec->get_tuple().get_value().cast_to<TPCC::Warehouse>();
 
   HeapObject w_obj;
   w_obj.allocate<TPCC::Warehouse>();
@@ -128,6 +161,36 @@ bool get_and_update_district(
   TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
   Tuple *tuple;
   Status sta = search_key(token, Storage::DISTRICT, d_key.view(), &tuple);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+
+  HeapObject d_obj;
+  d_obj.allocate<TPCC::District>();
+  TPCC::District& new_dist = d_obj.ref();
+  memcpy(&new_dist, &old_dist, sizeof(new_dist));
+
+  new_dist.D_YTD += h_amount;
+
+  sta = update(token, Storage::DISTRICT, Tuple(d_key.view(), std::move(d_obj)), &tuple);
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  dist = &tuple->get_value().cast_to<TPCC::District>();
+  return true;
+}
+
+bool get_and_update_district_myrw(
+  Token& token, uint8_t d_id, uint16_t w_id, double h_amount,
+  const TPCC::District*& dist, MyRW *myrw)
+{
+  SimpleKey<8> d_key;
+  TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+  Tuple *tuple;
+  Status sta = search_key_myrw(token, Storage::DISTRICT, d_key.view(), &tuple, myrw);
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     abort(token);
     return false;
@@ -184,16 +247,19 @@ PROMISE(bool) get_and_update_district_coro(
 PILO_PROMISE(bool) get_and_update_district_pilo(
 						pobjs_t &pobjs,
   uint8_t d_id, uint16_t w_id, double h_amount,
-  const TPCC::District*& dist)
+						const TPCC::District*& dist, MyRW *myrw = nullptr)
 {
   SimpleKey<8> d_key;
   TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
-  Tuple *tuple;
-  Status sta = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &tuple);
+  Record *rec = nullptr;
+  Status sta = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::DISTRICT, d_key.view(), rec);
+#endif
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
-  TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+  TPCC::District& old_dist = rec->get_tuple().get_value().cast_to<TPCC::District>();
 
   HeapObject d_obj;
   d_obj.allocate<TPCC::District>();
@@ -248,6 +314,30 @@ bool get_customer_key_by_last_name(
   return true;
 }
 
+bool get_customer_key_by_last_name_myrw(
+					uint16_t c_w_id, uint8_t c_d_id, const char* c_last, SimpleKey<8>& c_key, MyRW *myrw)
+{
+  char c_last_key_buf[Customer::CLastKey::required_size()];
+  std::string_view c_last_key = Customer::CreateSecondaryKey(c_w_id, c_d_id, c_last, &c_last_key_buf[0]);
+  Record *pfrec = myrw->get_pfrec(Storage::SECONDARY, c_last_key);
+  void *ret_ptr;
+  if (pfrec) {
+    ret_ptr = pfrec;
+  } else {
+    ret_ptr = kohler_masstree::find_record(Storage::SECONDARY, c_last_key);
+  }
+  assert(ret_ptr != nullptr);
+  std::vector<SimpleKey<8>> *vec_ptr;
+  std::string_view value_view = reinterpret_cast<Record *>(ret_ptr)->get_tuple().get_val();
+  assert(value_view.size() == sizeof(uintptr_t));
+  ::memcpy(&vec_ptr, value_view.data(), sizeof(uintptr_t));
+  size_t nr_same_name = vec_ptr->size();
+  assert(nr_same_name > 0);
+  size_t idx = (nr_same_name + 1) / 2 - 1; // midpoint.
+  c_key = (*vec_ptr)[idx];
+  return true;
+}
+
 PROMISE(bool) get_customer_key_by_last_name_coro(
   uint16_t c_w_id, uint8_t c_d_id, const char* c_last, SimpleKey<8>& c_key)
 {
@@ -267,12 +357,15 @@ PROMISE(bool) get_customer_key_by_last_name_coro(
 }
 
 PILO_PROMISE(bool) get_customer_key_by_last_name_pilo(
-  uint16_t c_w_id, uint8_t c_d_id, const char* c_last, SimpleKey<8>& c_key)
+						      uint16_t c_w_id, uint8_t c_d_id, const char* c_last, SimpleKey<8>& c_key, MyRW *myrw)
 {
   char c_last_key_buf[Customer::CLastKey::required_size()];
   std::string_view c_last_key = Customer::CreateSecondaryKey(c_w_id, c_d_id, c_last, &c_last_key_buf[0]);
   void *ret_ptr = PILO_AWAIT kohler_masstree::find_record_pilo(Storage::SECONDARY, c_last_key);
   assert(ret_ptr != nullptr);
+#if MYRW
+  myrw->rd(Storage::SECONDARY, c_last_key, reinterpret_cast<Record *>(ret_ptr));
+#endif
   std::vector<SimpleKey<8>> *vec_ptr;
   std::string_view value_view = reinterpret_cast<Record *>(ret_ptr)->get_tuple().get_val();
   assert(value_view.size() == sizeof(uintptr_t));
@@ -355,6 +448,45 @@ bool get_and_update_customer(
   return true;
 }
 
+bool get_and_update_customer_myrw(
+  Token& token, const SimpleKey<8>& c_key,
+  uint32_t c_id, uint8_t c_d_id, uint16_t c_w_id, uint8_t d_id, uint16_t w_id,
+  double h_amount, MyRW *myrw)
+{
+  Tuple *tuple;
+  Status sta = search_key_myrw(token, Storage::CUSTOMER, c_key.view(), &tuple, myrw);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  const TPCC::Customer& old_cust = tuple->get_value().cast_to<TPCC::Customer>();
+
+  HeapObject c_obj;
+  c_obj.allocate<TPCC::Customer>();
+  TPCC::Customer& new_cust = c_obj.ref();
+  ::memcpy(&new_cust, &old_cust, sizeof(new_cust));
+
+  new_cust.C_BALANCE += h_amount;
+  new_cust.C_YTD_PAYMENT += h_amount;
+  new_cust.C_PAYMENT_CNT += 1;
+
+  if (new_cust.C_CREDIT[0] == 'B' && new_cust.C_CREDIT[1] == 'C') {
+    size_t len = snprintf(
+      &new_cust.C_DATA[0], 501,
+      "| %4" PRIu32 " %2" PRIu8 " %4" PRIu16 " %2" PRIu16 " %4" PRIu16 " $%7.2f",
+      c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
+    assert(len <= 500);
+    len += copy_cstr(&new_cust.C_DATA[len], &old_cust.C_DATA[0], 501 - len);
+  }
+
+  sta = update(token, Storage::CUSTOMER, Tuple(c_key.view(), std::move(c_obj)));
+  if (sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  return true;
+}
+
 
 PROMISE(bool) get_and_update_customer_coro(
   Token& token, const SimpleKey<8>& c_key,
@@ -398,10 +530,13 @@ PROMISE(bool) get_and_update_customer_coro(
 PILO_PROMISE(bool) get_and_update_customer_pilo(
   const SimpleKey<8>& c_key,
   uint32_t c_id, uint8_t c_d_id, uint16_t c_w_id, uint8_t d_id, uint16_t w_id,
-  double h_amount)
+  double h_amount, MyRW *myrw = nullptr)
 {
-  Tuple *tuple;
-  Status sta = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &tuple);
+  Record *rec = nullptr;
+  Status sta = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::CUSTOMER, c_key.view(), rec);
+#endif
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
@@ -505,7 +640,7 @@ PILO_PROMISE(bool) insert_history_pilo(
 } // unnamed namespace
 
 
-PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token)
+PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token, MyRW *myrw)
 {
   uint16_t w_id = query->w_id;
   uint16_t c_w_id = query->c_w_id;
@@ -515,22 +650,39 @@ PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token
   double h_amount = query->h_amount;
 
   const TPCC::Warehouse *ware;
+#if MYRW
+  auto ret_warehouse = get_and_update_warehouse_myrw(token, w_id, h_amount, ware, myrw);
+#else
   auto ret_warehouse = AWAIT get_and_update_warehouse_coro(token, w_id, h_amount, ware);
+#endif
   if (!ret_warehouse) RETURN false;
   const TPCC::District *dist;
+#if MYRW
+  auto ret_district = get_and_update_district_myrw(token, d_id, w_id, h_amount, dist, myrw);
+#else
   auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, h_amount, dist);
+#endif
   if (!ret_district) RETURN false;
 
   SimpleKey<8> c_key;
   if (query->by_last_name) {
+#if MYRW
+    auto ret_custkey = AWAIT get_customer_key_by_last_name_myrw(c_w_id, c_d_id, query->c_last, c_key, myrw);
+#else
     auto ret_custkey = AWAIT get_customer_key_by_last_name_coro(c_w_id, c_d_id, query->c_last, c_key);
+#endif
     if (!ret_custkey) RETURN false;
   } else {
     // search customers by c_id
     TPCC::Customer::CreateKey(c_w_id, c_d_id, c_id, c_key.ptr());
   }
+#if MYRW
+  auto ret_customer = get_and_update_customer_myrw(
+						   token, c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount, myrw);
+#else
   auto ret_customer = AWAIT get_and_update_customer_coro(
 					      token, c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
+#endif
   if (!ret_customer) RETURN false;
 
   if (FLAGS_insert_exe) {
@@ -548,7 +700,7 @@ PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token
 }
 
 
-PILO_PROMISE(bool) run_payment_pilo(query::Payment *query, HistoryKeyGenerator *hkg)
+PILO_PROMISE(bool) run_payment_pilo(query::Payment *query, HistoryKeyGenerator *hkg, MyRW *myrw = nullptr)
 {
   uint16_t w_id = query->w_id;
   uint16_t c_w_id = query->c_w_id;
@@ -560,22 +712,22 @@ PILO_PROMISE(bool) run_payment_pilo(query::Payment *query, HistoryKeyGenerator *
   pobjs_t pobjs;
 
   const TPCC::Warehouse *ware;
-  auto ret_warehouse = PILO_AWAIT get_and_update_warehouse_pilo(pobjs, w_id, h_amount, ware);
+  auto ret_warehouse = PILO_AWAIT get_and_update_warehouse_pilo(pobjs, w_id, h_amount, ware, myrw);
   if (!ret_warehouse) PILO_RETURN ret_false_pilo(pobjs);
   const TPCC::District *dist;
-  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, h_amount, dist);
+  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, h_amount, dist, myrw);
   if (!ret_district) PILO_RETURN ret_false_pilo(pobjs);
 
   SimpleKey<8> c_key;
   if (query->by_last_name) {
-    auto ret_custkey = PILO_AWAIT get_customer_key_by_last_name_pilo(c_w_id, c_d_id, query->c_last, c_key);
+    auto ret_custkey = PILO_AWAIT get_customer_key_by_last_name_pilo(c_w_id, c_d_id, query->c_last, c_key, myrw);
     if (!ret_custkey) PILO_RETURN ret_false_pilo(pobjs);
   } else {
     // search customers by c_id
     TPCC::Customer::CreateKey(c_w_id, c_d_id, c_id, c_key.ptr());
   }
   auto ret_customer = PILO_AWAIT get_and_update_customer_pilo(
-					      c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
+							      c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount, myrw);
   if (!ret_customer) PILO_RETURN ret_false_pilo(pobjs);
 
   if (FLAGS_insert_exe) {
