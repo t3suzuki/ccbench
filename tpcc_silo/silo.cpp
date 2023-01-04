@@ -85,11 +85,17 @@ PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_
     if (loadAcquire(quit)) break;
 
     bool validation = true;
+    MyRW myrw;
 
     switch (query.type) {
       case TPCC::Q_NEW_ORDER :
+#if MYRW
+        PILO_AWAIT TPCC::run_new_order_pilo(&query.new_order, &myrw);
+        validation = TPCC::run_new_order(&query.new_order, token, &myrw);
+#else
         PILO_AWAIT TPCC::run_new_order_pilo(&query.new_order);
         validation = TPCC::run_new_order(&query.new_order, token);
+#endif
         break;
       case TPCC::Q_PAYMENT :
         PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg);

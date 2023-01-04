@@ -74,6 +74,31 @@ PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
   *tuple = &rec_ptr->get_tuple();
   PILO_RETURN Status::OK;
 }
+
+PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+		       std::string_view key, Record **rec) {
+  masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+
+  //Record *rec_ptr{kohler_masstree::get_mtdb(storage).get_value(key.data(), key.size())};
+  auto mt = kohler_masstree::get_mtdb(storage);
+  auto r = PILO_AWAIT mt.get_value_pilo(key.data(), key.size());
+  Record *rec_ptr{r};
+  if (rec_ptr == nullptr) {
+    *rec = nullptr;
+    PILO_RETURN Status::WARN_NOT_FOUND;
+  }
+  tid_word chk_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+  if (chk_tid.get_absent()) {
+    // The second condition checks
+    // whether the record you want to read should not be read by parallel
+    // insert / delete.
+    *rec = nullptr;
+    PILO_RETURN Status::WARN_NOT_FOUND;
+  }
+
+  *rec = rec_ptr;
+  PILO_RETURN Status::OK;
+}
   
 Status search_key(Token token, Storage storage,  // NOLINT
                   std::string_view key, Tuple **tuple) {
@@ -99,6 +124,46 @@ Status search_key(Token token, Storage storage,  // NOLINT
     return Status::WARN_NOT_FOUND;
   }
 
+  read_set_obj rs_ob(storage, rec_ptr);
+  Status rr = read_record(rs_ob.get_rec_read(), rec_ptr);
+  if (rr == Status::OK) {
+    ti->get_read_set().emplace_back(std::move(rs_ob));
+    *tuple = &ti->get_read_set().back().get_rec_read().get_tuple();
+  }
+  return rr;
+}
+
+Status search_key_myrw(Token token, Storage storage,  // NOLINT
+		       std::string_view key, Tuple **tuple, MyRW *myrw) {
+  auto *ti = static_cast<session_info *>(token);
+  if (!ti->get_txbegan()) tx_begin(token);
+
+  Record *rec_ptr;
+  Record *pfrec = myrw->get_pfrec(storage, key);
+  //if (pfrec && pfrec->get_tidw().latest_) {
+  if (pfrec) {
+    rec_ptr = pfrec;
+  } else {
+    masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
+
+    Status sta = search_key_local_set(ti, storage, key, tuple);
+    if (sta != Status::OK) return sta;
+    
+    rec_ptr = kohler_masstree::get_mtdb(storage).get_value(key.data(), key.size());
+    if (rec_ptr == nullptr) {
+      *tuple = nullptr;
+      return Status::WARN_NOT_FOUND;
+    }
+    tid_word chk_tid(loadAcquire(rec_ptr->get_tidw().get_obj()));
+    if (chk_tid.get_absent()) {
+      // The second condition checks
+      // whether the record you want to read should not be read by parallel
+      // insert / delete.
+      *tuple = nullptr;
+      return Status::WARN_NOT_FOUND;
+    }
+  }
+  
   read_set_obj rs_ob(storage, rec_ptr);
   Status rr = read_record(rs_ob.get_rec_read(), rec_ptr);
   if (rr == Status::OK) {

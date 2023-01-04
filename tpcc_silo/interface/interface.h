@@ -297,6 +297,10 @@ Status search_key_pref(Storage storage,  // NOLINT
 
   PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
                          std::string_view key, Tuple **tuple);
+  PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+                         std::string_view key, Record **rec);
+  Status search_key_myrw(Token token, Storage storage,  // NOLINT
+			 std::string_view key, Tuple **tuple, MyRW *myrw);
   
 PROMISE(Status) search_key_coro(Token token, Storage storage,  // NOLINT
 				std::string_view key, Tuple **tuple);

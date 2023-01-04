@@ -59,4 +59,30 @@ private:
   tid_word tidw_;
 };
 
+class MyRW {
+private:
+  struct tri_t {
+    Storage storage;
+    std::string key;
+    Record *rec;
+  };
+  std::vector<tri_t> tris;
+  int get_id = 0;
+public:
+  MyRW() {};
+  void rd(Storage storage, std::string_view key, Record *rec) {
+    tri_t tri{storage, std::string(key), rec};
+    tris.push_back(tri);
+  };
+  Record *get_pfrec(Storage storage, std::string_view key) {
+    tri_t tri = tris[get_id];
+    get_id++;
+    if ((tri.storage == storage) and (tri.key == std::string(key))) {
+      return tri.rec;
+    } else {
+      return nullptr;
+    }
+  };
+};
+  
 }  // namespace ccbench

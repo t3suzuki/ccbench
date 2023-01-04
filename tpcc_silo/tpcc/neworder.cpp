@@ -17,12 +17,12 @@ namespace {
  * WHERE w_id = :w_id AND c_w_id = w_id AND c_d_id = :d_id AND c_id = :c_id;
  * +========================================================================
  */
-bool get_warehouse(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware)
+bool get_warehouse_myrw(Token& token, uint16_t w_id, const TPCC::Warehouse*& ware, MyRW *myrw)
 {
   SimpleKey<8> w_key;
   TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
   Tuple *tuple;
-  Status stat = search_key(token, Storage::WAREHOUSE, w_key.view(), &tuple);
+  Status stat = search_key_myrw(token, Storage::WAREHOUSE, w_key.view(), &tuple, myrw);
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
     abort(token);
     return false;
@@ -58,17 +58,20 @@ bool get_warehouse_pref(Token& token, uint16_t w_id, const TPCC::Warehouse*& war
   ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
   return true;
 }
-  
-PILO_PROMISE(bool) get_warehouse_pilo(uint16_t w_id, const TPCC::Warehouse*& ware)
+
+PILO_PROMISE(bool) get_warehouse_pilo(uint16_t w_id, const TPCC::Warehouse*& ware, MyRW *myrw = nullptr)
 {
   SimpleKey<8> w_key;
   TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
-  Tuple *tuple;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &tuple);
+  Record *rec = nullptr;
+  Status stat = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::WAREHOUSE, w_key.view(), rec);
+#endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
-  ware = &tuple->get_value().cast_to<TPCC::Warehouse>();
+  ware = &rec->get_tuple().get_value().cast_to<TPCC::Warehouse>();
   PILO_RETURN true;
 }
   
@@ -88,18 +91,37 @@ bool get_customer(
   return true;
 }
 
-PILO_PROMISE(bool) get_customer_pilo(
-  uint32_t c_id, uint8_t d_id, uint16_t w_id,
-  const TPCC::Customer*& cust)
+bool get_customer_myrw(
+  Token& token, uint32_t c_id, uint8_t d_id, uint16_t w_id,
+  const TPCC::Customer*& cust, MyRW *myrw)
 {
   SimpleKey<8> c_key;
   TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
   Tuple *tuple;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &tuple);
+  Status stat = search_key_myrw(token, Storage::CUSTOMER, c_key.view(), &tuple, myrw);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  cust = &tuple->get_value().cast_to<TPCC::Customer>();
+  return true;
+}
+  
+PILO_PROMISE(bool) get_customer_pilo(
+  uint32_t c_id, uint8_t d_id, uint16_t w_id,
+  const TPCC::Customer*& cust, MyRW *myrw = nullptr)
+{
+  SimpleKey<8> c_key;
+  TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
+  Record *rec;
+  Status stat = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::CUSTOMER, c_key.view(), rec);
+#endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
-  cust = &tuple->get_value().cast_to<TPCC::Customer>();
+  cust = &rec->get_tuple().get_value().cast_to<TPCC::Customer>();
   PILO_RETURN true;
 }
   
@@ -157,22 +179,52 @@ bool get_and_update_district(
   return true;
 }
 
-PILO_PROMISE(bool) get_and_update_district_pilo(
-						pobjs_t &pobjs,
-    uint8_t d_id, uint16_t w_id,
-    const TPCC::District*& dist)
+bool get_and_update_district_myrw(
+    Token& token, uint8_t d_id, uint16_t w_id,
+    const TPCC::District*& dist, MyRW *myrw)
 {
   SimpleKey<8> d_key;
   TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
   Tuple *tuple;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &tuple);
+  Status stat = search_key_myrw(token, Storage::DISTRICT, d_key.view(), &tuple, myrw);
+  if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  HeapObject d_obj;
+  d_obj.allocate<TPCC::District>();
+  TPCC::District& new_dist = d_obj.ref();
+  const TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+  memcpy(&new_dist, &old_dist, sizeof(new_dist));
+  new_dist.D_NEXT_O_ID++;
+  stat = update(token, Storage::DISTRICT, Tuple(d_key.view(), std::move(d_obj)), &tuple);
+  if (stat == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  dist = &tuple->get_value().cast_to<TPCC::District>();
+  return true;
+}
+  
+PILO_PROMISE(bool) get_and_update_district_pilo(
+						pobjs_t &pobjs,
+    uint8_t d_id, uint16_t w_id,
+						const TPCC::District*& dist, MyRW *myrw = nullptr)
+{
+  SimpleKey<8> d_key;
+  TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+  Record *rec = nullptr;
+  Status stat = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::DISTRICT, d_key.view(), rec);
+#endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
   HeapObject d_obj;
   d_obj.allocate<TPCC::District>();
   TPCC::District& new_dist = d_obj.ref();
-  const TPCC::District& old_dist = tuple->get_value().cast_to<TPCC::District>();
+  const TPCC::District& old_dist = rec->get_tuple().get_value().cast_to<TPCC::District>();
   memcpy(&new_dist, &old_dist, sizeof(new_dist));
   new_dist.D_NEXT_O_ID++;
   dist = &new_dist;
@@ -397,6 +449,20 @@ bool get_item(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
   return true;
 }
 
+bool get_item_myrw(Token& token, uint32_t ol_i_id, const TPCC::Item*& item, MyRW *myrw)
+{
+  SimpleKey<8> i_key;
+  TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
+  Tuple *tuple;
+  Status sta = search_key_myrw(token, Storage::ITEM, i_key.view(), &tuple, myrw);
+  if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
+    abort(token);
+    return false;
+  }
+  item = &tuple->get_value().cast_to<TPCC::Item>();
+  return true;
+}
+
 bool get_item_pref(uint32_t ol_i_id, const TPCC::Item*& item)
 {
   SimpleKey<8> i_key;
@@ -410,16 +476,19 @@ bool get_item_pref(uint32_t ol_i_id, const TPCC::Item*& item)
   return true;
 }
 
-PILO_PROMISE(bool) get_item_pilo(uint32_t ol_i_id, const TPCC::Item*& item)
+PILO_PROMISE(bool) get_item_pilo(uint32_t ol_i_id, const TPCC::Item*& item, MyRW *myrw = nullptr)
 {
   SimpleKey<8> i_key;
   TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
-  Tuple *tuple;
-  Status sta = PILO_AWAIT search_key_pilo(Storage::ITEM, i_key.view(), &tuple);
+  Record *rec = nullptr;
+  Status sta = PILO_AWAIT search_key_pilo(Storage::ITEM, i_key.view(), &rec);
+#if MYRW
+  myrw->rd(Storage::ITEM, i_key.view(), rec);
+#endif
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
-  item = &tuple->get_value().cast_to<TPCC::Item>();
+  item = &rec->get_tuple().get_value().cast_to<TPCC::Item>();
   PILO_RETURN true;
 }
 
@@ -492,6 +561,45 @@ bool get_and_update_stock(
     return true;
 }
 
+bool get_and_update_stock_myrw(
+  Token& token, uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
+  const TPCC::Stock*& sto, MyRW *myrw)
+{
+    SimpleKey<8> s_key;
+    TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
+    Tuple *tuple;
+    Status stat = search_key_myrw(token, Storage::STOCK, s_key.view(), &tuple, myrw);
+    if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
+      abort(token);
+      return false;
+    }
+    const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
+
+    HeapObject s_obj;
+    s_obj.allocate<TPCC::Stock>();
+    TPCC::Stock& new_sto = s_obj.ref();
+    memcpy(&new_sto, &old_sto, sizeof(new_sto));
+
+    new_sto.S_YTD = old_sto.S_YTD + ol_quantity;
+    new_sto.S_ORDER_CNT = old_sto.S_ORDER_CNT + 1;
+    if (remote) {
+      new_sto.S_REMOTE_CNT = old_sto.S_REMOTE_CNT + 1;
+    }
+
+    int32_t s_quantity = old_sto.S_QUANTITY;
+    int32_t quantity = s_quantity - ol_quantity;
+    if (s_quantity <= ol_quantity + 10) quantity += 91;
+    new_sto.S_QUANTITY = quantity;
+
+    stat = update(token, Storage::STOCK, Tuple(s_key.view(), std::move(s_obj)), &tuple);
+    if (stat == Status::WARN_NOT_FOUND) {
+      abort(token);
+      return false;
+    }
+    sto = &tuple->get_value().cast_to<TPCC::Stock>();
+    return true;
+}
+
 bool get_and_update_stock_pref(
   uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
   const TPCC::Stock*& sto)
@@ -527,16 +635,19 @@ bool get_and_update_stock_pref(
 PILO_PROMISE(bool) get_and_update_stock_pilo(
 					     pobjs_t &pobjs,
   uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
-  const TPCC::Stock*& sto)
+					     const TPCC::Stock*& sto, MyRW *myrw = nullptr)
 {
     SimpleKey<8> s_key;
     TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
-    Tuple *tuple;
-    Status stat = PILO_AWAIT search_key_pilo(Storage::STOCK, s_key.view(), &tuple);
+    Record *rec = nullptr;
+    Status stat = PILO_AWAIT search_key_pilo(Storage::STOCK, s_key.view(), &rec);
+#if MYRW
+    myrw->rd(Storage::STOCK, s_key.view(), rec);
+#endif
     if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
       PILO_RETURN false;
     }
-    const TPCC::Stock& old_sto = tuple->get_value().cast_to<TPCC::Stock>();
+    const TPCC::Stock& old_sto = rec->get_tuple().get_value().cast_to<TPCC::Stock>();
 
     HeapObject s_obj;
     s_obj.allocate<TPCC::Stock>();
@@ -794,7 +905,7 @@ inline bool my_abort(Token &token)
   return false;
 }
 
-PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
+PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *myrw = nullptr)
 {
   bool remote = query->remote;
   uint16_t w_id = query->w_id;
@@ -803,16 +914,16 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   uint8_t ol_cnt = query->ol_cnt;
 
   const TPCC::Warehouse *ware;
-#if 0
-  if (!get_warehouse(token, w_id, ware)) RETURN my_abort(token);
+#if MYRW
+  if (!get_warehouse_myrw(token, w_id, ware, myrw)) RETURN my_abort(token);
 #else
   auto ret_warehouse = AWAIT get_warehouse_coro(token, w_id, ware);
   if (!ret_warehouse) RETURN my_abort(token);
 #endif
 
   const TPCC::Customer *cust;
-#if 0
-  if (!get_customer(token, c_id, d_id, w_id, cust)) RETURN my_abort(token);
+#if MYRW
+  if (!get_customer_myrw(token, c_id, d_id, w_id, cust, myrw)) RETURN my_abort(token);
 #else
   auto ret_customer = AWAIT get_customer_coro(token, c_id, d_id, w_id, cust);
   if (!ret_customer)
@@ -820,8 +931,8 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 #endif
 
   const TPCC::District *dist;
-#if 0
-  if (!get_and_update_district(token, d_id, w_id, dist)) RETURN my_abort(token);
+#if MYRW
+  if (!get_and_update_district_myrw(token, d_id, w_id, dist, myrw)) RETURN my_abort(token);
 #else
   auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, dist);
   if (!ret_district)
@@ -851,8 +962,8 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
-#if 0
-    if (!get_item(token, ol_i_id, item)) RETURN my_abort(token);
+#if MYRW
+    if (!get_item_myrw(token, ol_i_id, item, myrw)) RETURN my_abort(token);
 #else
     auto ret_item = AWAIT get_item_coro(token, ol_i_id, item);
     if (!ret_item)
@@ -860,8 +971,8 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
 #endif
 
     const TPCC::Stock *sto;
-#if 0
-    if (!get_and_update_stock(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto)) RETURN my_abort(token);
+#if MYRW
+    if (!get_and_update_stock_myrw(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw)) RETURN my_abort(token);
 #else
     auto ret_stock = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
     if (!ret_stock)
@@ -893,7 +1004,7 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token)
   RETURN my_abort(token);
 }
 
-PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
+PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query, MyRW *myrw = nullptr)
 {
   bool remote = query->remote;
   uint16_t w_id = query->w_id;
@@ -904,13 +1015,13 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
   pobjs_t pobjs;
 
   const TPCC::Warehouse *ware_pref;
-  auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref);
+  auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref, myrw);
   if (!ret_warehouse) PILO_RETURN ret_false_pilo(pobjs);
   const TPCC::Customer *cust_pref;
-  auto ret_customer = PILO_AWAIT get_customer_pilo(c_id, d_id, w_id, cust_pref);
+  auto ret_customer = PILO_AWAIT get_customer_pilo(c_id, d_id, w_id, cust_pref, myrw);
   if (!ret_customer) PILO_RETURN ret_false_pilo(pobjs);
   const TPCC::District *dist_pref;
-  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, dist_pref);
+  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, dist_pref, myrw);
   if (!ret_district) PILO_RETURN ret_false_pilo(pobjs);
   uint32_t o_id_pref = dist_pref->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord_pref;
@@ -926,11 +1037,11 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query)
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
-    auto ret_item = PILO_AWAIT get_item_pilo(ol_i_id, item);
+    auto ret_item = PILO_AWAIT get_item_pilo(ol_i_id, item, myrw);
     if (!ret_item) PILO_RETURN ret_false_pilo(pobjs);
 
     const TPCC::Stock *sto;
-    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(pobjs, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(pobjs, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw);
     if (!ret_stock) PILO_RETURN ret_false_pilo(pobjs);
 
     if (FLAGS_insert_exe) {
