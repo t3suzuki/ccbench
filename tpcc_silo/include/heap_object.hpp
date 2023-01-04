@@ -145,5 +145,21 @@ inline void deep_copy(HeapObject& lhs, const HeapObject& rhs)
   lhs.deep_copy_from(rhs);
 }
 
+using pobjs_t = std::vector<HeapObject>;
+
+inline void
+free_pobjs(pobjs_t &pobjs)
+{
+  for (auto it = pobjs.begin(); it != pobjs.end(); ++it) {
+    it->reset();
+  }
+}
+
+inline bool
+ret_false_pilo(pobjs_t &pobjs)
+{
+  free_pobjs(pobjs);
+  return false;
+}
 
 } // namespace ccbench

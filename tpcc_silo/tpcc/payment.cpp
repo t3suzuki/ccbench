@@ -86,6 +86,7 @@ PROMISE(bool) get_and_update_warehouse_coro(
 }
 
 PILO_PROMISE(bool) get_and_update_warehouse_pilo(
+						 pobjs_t &pobjs,
   uint16_t w_id, double h_amount,
   const TPCC::Warehouse*& ware)
 {
@@ -105,6 +106,7 @@ PILO_PROMISE(bool) get_and_update_warehouse_pilo(
 
   new_ware.W_YTD = old_ware.W_YTD + h_amount;
   ware = &new_ware;
+  pobjs.emplace_back(std::move(w_obj));
   PILO_RETURN true;
 }
   
@@ -180,6 +182,7 @@ PROMISE(bool) get_and_update_district_coro(
 }
 
 PILO_PROMISE(bool) get_and_update_district_pilo(
+						pobjs_t &pobjs,
   uint8_t d_id, uint16_t w_id, double h_amount,
   const TPCC::District*& dist)
 {
@@ -200,6 +203,7 @@ PILO_PROMISE(bool) get_and_update_district_pilo(
   new_dist.D_YTD += h_amount;
 
   dist = &new_dist;
+  pobjs.emplace_back(std::move(d_obj));
   PILO_RETURN true;
 }
   
@@ -471,6 +475,7 @@ PROMISE(bool) insert_history_coro(
 
 
 PILO_PROMISE(bool) insert_history_pilo(
+						pobjs_t &pobjs,
   uint32_t c_id, uint8_t c_d_id, uint16_t c_w_id, uint8_t d_id, uint16_t w_id,
   double h_amount, const char* w_name, const char* d_name,
   HistoryKeyGenerator *hkg)
@@ -490,6 +495,7 @@ PILO_PROMISE(bool) insert_history_pilo(
 
   SimpleKey<8> h_key = hkg->get_as_simple_key();
   Status sta = PILO_AWAIT insert_pilo(Storage::HISTORY, Tuple(h_key.view(), std::move(h_obj)));
+  pobjs.emplace_back(std::move(h_obj));
   if (sta == Status::WARN_NOT_FOUND) {
     PILO_RETURN false;
   }
@@ -551,33 +557,36 @@ PILO_PROMISE(bool) run_payment_pilo(query::Payment *query, HistoryKeyGenerator *
   uint8_t c_d_id = query->c_d_id;
   double h_amount = query->h_amount;
 
+  pobjs_t pobjs;
+
   const TPCC::Warehouse *ware;
-  auto ret_warehouse = PILO_AWAIT get_and_update_warehouse_pilo(w_id, h_amount, ware);
-  if (!ret_warehouse) PILO_RETURN false;
+  auto ret_warehouse = PILO_AWAIT get_and_update_warehouse_pilo(pobjs, w_id, h_amount, ware);
+  if (!ret_warehouse) PILO_RETURN ret_false_pilo(pobjs);
   const TPCC::District *dist;
-  auto ret_district = PILO_AWAIT get_and_update_district_pilo(d_id, w_id, h_amount, dist);
-  if (!ret_district) PILO_RETURN false;
+  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, h_amount, dist);
+  if (!ret_district) PILO_RETURN ret_false_pilo(pobjs);
 
   SimpleKey<8> c_key;
   if (query->by_last_name) {
     auto ret_custkey = PILO_AWAIT get_customer_key_by_last_name_pilo(c_w_id, c_d_id, query->c_last, c_key);
-    if (!ret_custkey) PILO_RETURN false;
+    if (!ret_custkey) PILO_RETURN ret_false_pilo(pobjs);
   } else {
     // search customers by c_id
     TPCC::Customer::CreateKey(c_w_id, c_d_id, c_id, c_key.ptr());
   }
   auto ret_customer = PILO_AWAIT get_and_update_customer_pilo(
 					      c_key, c_id, c_d_id, c_w_id, d_id, w_id, h_amount);
-  if (!ret_customer) PILO_RETURN false;
+  if (!ret_customer) PILO_RETURN ret_false_pilo(pobjs);
 
   if (FLAGS_insert_exe) {
-    auto ret_history = PILO_AWAIT insert_history_pilo(
+    auto ret_history = PILO_AWAIT insert_history_pilo(pobjs,
           c_id, c_d_id, c_w_id, d_id, w_id, h_amount,
           &ware->W_NAME[0], &dist->D_NAME[0], hkg);
-    if (!ret_history) PILO_RETURN false;
+    if (!ret_history) PILO_RETURN ret_false_pilo(pobjs);
   }
 
-  PILO_RETURN false;
+  free_pobjs(pobjs);
+  PILO_RETURN true;
 }
 
 
