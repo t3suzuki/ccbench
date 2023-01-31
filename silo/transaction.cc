@@ -238,7 +238,8 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
 
 PILO_PROMISE(Tuple *) TxnExecutor::prefetch_tree(std::uint64_t key) {
   Tuple *tuple;
-  PILO_AWAIT MT.get_value_pilo(key, tuple);
+  //PILO_AWAIT MT.get_value_pilo(key, tuple);
+  PILO_AWAIT MT.get_value_pilo_flat(key, tuple);
   PILO_RETURN tuple;
 }
 

@@ -139,7 +139,12 @@ RETRY:
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
 #if MYRW
-      itr->tuple = PILO_AWAIT trans.prefetch_tree((*itr).key_);
+      //itr->tuple = PILO_AWAIT trans.prefetch_tree((*itr).key_);
+      {
+	Tuple *tuple;
+	PILO_AWAIT MT.get_value_pilo_flat((*itr).key_, tuple);
+	itr->tuple = tuple;
+      }
 #else
       PILO_AWAIT trans.prefetch_tree((*itr).key_);
 #endif
