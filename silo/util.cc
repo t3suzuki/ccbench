@@ -31,6 +31,8 @@
 
 #include "../include/coro.h"
 
+void *dax_malloc(size_t sz);
+
 void chkArg() {
   displayParameter();
 
@@ -120,9 +122,13 @@ void partTableInit([[maybe_unused]] size_t thid, uint64_t start, uint64_t end) {
 }
 
 void makeDB() {
+#if DAX
+  Table = (Tuple *)dax_malloc(FLAGS_tuple_num * sizeof(Tuple));
+#else
   if (posix_memalign((void **) &Table, PAGE_SIZE,
                      (FLAGS_tuple_num) * sizeof(Tuple)) != 0)
     ERR;
+#endif
 #if dbs11
   if (madvise((void *)Table, (FLAGS_tuple_num) * sizeof(Tuple),
               MADV_HUGEPAGE) != 0)
