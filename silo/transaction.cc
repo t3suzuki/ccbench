@@ -107,7 +107,8 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
    */
   Tuple *tuple;
 #if MASSTREE_USE
-  AWAIT MT.get_value_coro(key, tuple);
+  //AWAIT MT.get_value_coro(key, tuple);
+  AWAIT MT.get_value_coro_flat(key, tuple);
 #if ADD_ANALYSIS
   ++sres_->local_tree_traversal_;
 #endif
@@ -390,7 +391,8 @@ PROMISE(void) TxnExecutor::write(std::uint64_t key, std::string_view val) {
     tuple = re->rcdptr_;
   } else {
 #if MASSTREE_USE
-    AWAIT MT.get_value_coro(key, tuple);
+    //AWAIT MT.get_value_coro(key, tuple);
+    AWAIT MT.get_value_coro_flat(key, tuple);
 #if ADD_ANALYSIS
     ++sres_->local_tree_traversal_;
 #endif
@@ -430,7 +432,7 @@ void TxnExecutor::mywrite(const Procedure &pro, std::string_view val) {
     Tuple *last_tuple = (Tuple *)pro.tuple;
     if (last_tuple->tidword_.latest == 0) {
 #if MASSTREE_USE
-      AWAIT MT.get_value_coro(key, tuple);
+      MT.get_value_coro(key, tuple);
 #if ADD_ANALYSIS
       ++sres_->local_tree_traversal_;
 #endif

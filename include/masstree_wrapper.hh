@@ -157,6 +157,119 @@ public:
     RETURN found;
   }
 
+  inline PROMISE(bool) get_value_coro_flat(std::uint64_t _key, value_ptr_t &value_ptr) {
+    std::uint64_t key_buf{__builtin_bswap64(_key)};
+    std::string_view key{reinterpret_cast<char *>(&key_buf), sizeof(key_buf)};
+    unlocked_cursor_type lp(table_, key.data(), key.size());
+    //bool found = AWAIT get_value_coro({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
+    bool found;
+    {
+      int match;
+      key_indexed_position kx;
+      Masstree::node_base<table_params>* root = const_cast<Masstree::node_base<table_params>*>(lp.root_);
+    retry:
+      {
+	const Masstree::node_base<table_params> *n[2];
+	typename Masstree::node_base<table_params>::nodeversion_type v[2];
+	bool sense;
+	
+	// Get a non-stale root.
+	// Detect staleness by checking whether n has ever split.
+	// The true root has never split.
+	//retry:
+	sense = false;
+	n[sense] = root;
+	while (1) {
+#if 0 // t3suzuki
+	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
+	  in->prefetch256B();
+	  SUSPEND;
+#endif
+	  v[sense] = n[sense]->stable_annotated(ti->stable_fence());
+	  if (v[sense].is_root())
+            break;
+	  ti->mark(tc_root_retry);
+	  n[sense] = n[sense]->maybe_parent();
+	}
+	
+	// Loop over internal nodes.
+	while (!v[sense].isleaf()) {
+	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
+#if 0 // t3suzuki
+	  in->prefetch();
+	  SUSPEND;
+#endif
+	  int kp = Masstree::internode<table_params>::bound_type::upper(lp.ka_, *in);
+	  n[!sense] = in->child_[kp];
+	  if (!n[!sense])
+            goto retry;
+#if 1 // t3suzuki
+	  const Masstree::internode<table_params> *cin = static_cast<const Masstree::internode<table_params>*>(n[!sense]);
+	  cin->prefetch256B();
+	  SUSPEND;
+#endif
+	  v[!sense] = n[!sense]->stable_annotated(ti->stable_fence());
+	  
+	  if (likely(!in->has_changed(v[sense]))) {
+            sense = !sense;
+            continue;
+	  }
+	  
+	  typename Masstree::node_base<table_params>::nodeversion_type oldv = v[sense];
+	  v[sense] = in->stable_annotated(ti->stable_fence());
+	  if (oldv.has_split(v[sense])
+	      && in->stable_last_key_compare(lp.ka_, v[sense], *ti) > 0) {
+	    ti->mark(tc_root_retry);
+	    goto retry;
+	  } else
+            ti->mark(tc_internode_retry);
+	}
+
+	lp.v_ = v[sense];
+	//PILO_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
+	lp.n_ = const_cast<Masstree::leaf<table_params> *>(static_cast<const Masstree::leaf<table_params> *>(n[sense]));
+      }
+   
+    forward:
+      if (lp.v_.deleted())
+        goto retry;
+   
+      lp.n_->prefetchRem();
+      SUSPEND;
+      lp.perm_ = lp.n_->permutation();
+      kx = Masstree::leaf<table_params>::bound_type::lower(lp.ka_, lp);
+      if (kx.p >= 0) {
+        lp.lv_ = lp.n_->lv_[kx.p];
+        lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
+    	SUSPEND;
+        match = lp.n_->ksuf_matches(kx.p, lp.ka_);
+      } else
+        match = 0;
+      if (lp.n_->has_changed(lp.v_)) {
+        ti->mark(threadcounter(tc_stable_leaf_insert + lp.n_->simple_has_split(lp.v_)));
+        lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, *ti);
+        goto forward;
+      }
+   
+      if (match < 0) {
+        lp.ka_.shift_by(-match);
+        root = lp.lv_.layer();
+        goto retry;
+      }
+      found = (bool)match;
+    }
+  
+    if (found) {
+      value_ptr = lp.value();
+    } else {
+      printf("something wrong?\n");
+      std::cout << key << std::endl;
+      exit(2);
+      value_ptr = nullptr;
+    }
+    RETURN found;
+  }
+  
   inline PILO_PROMISE(bool) get_value_pilo_flat(std::uint64_t _key, value_ptr_t &value_ptr) {
     std::uint64_t key_buf{__builtin_bswap64(_key)};
     //bool found = PILO_AWAIT get_value_pilo({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
