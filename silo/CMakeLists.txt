@@ -112,9 +112,12 @@ endif ()
 
 
 add_executable(silo_original ${SILO_SOURCES})
+#set_target_properties(silo_original PROPERTIES COMPILE_FLAGS "-g")
 target_link_libraries(silo_original ${SILO_LIBS})
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
+#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fno-omit-frame-pointer -fcoroutines-ts -stdlib=libc++")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -fcoroutines-ts -stdlib=libc++")
 
 
 add_executable(silo_dax ${SILO_SOURCES})

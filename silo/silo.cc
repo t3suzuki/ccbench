@@ -385,7 +385,8 @@ run_perf(const bool &start, const bool &quit)
     char buf[50];
     printf("perf...\n");
     //sprintf(buf, "perf stat -ddd -p %d   > stat.log 2>&1", pid);
-    sprintf(buf, "perf record -C 0 -g");
+    //sprintf(buf, "perf record -C 0-15 -g");
+    sprintf(buf, "perf record -C 0-15 -g");
     execl("/bin/sh", "sh", "-c", buf, NULL);
   } else {
     setpgid(cpid, 0);
