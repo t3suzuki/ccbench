@@ -63,7 +63,7 @@ void TxnExecutor::lockWriteSet() {
 [[maybe_unused]] retry
   :
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
-    expected.obj_ = loadAcquire((*itr).rcdptr_->tidword_.obj_);
+    expected.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
     for (;;) {
       if (expected.lock) {
 #if NO_WAIT_LOCKING_IN_VALIDATION
@@ -77,8 +77,10 @@ void TxnExecutor::lockWriteSet() {
       } else {
         desired = expected;
         desired.lock = 1;
-        if (compareExchange((*itr).rcdptr_->tidword_.obj_, expected.obj_,
+#if 1
+        if (compareExchange((*itr).rcdptr_->fetch_tidword().obj_, expected.obj_,
                             desired.obj_))
+#endif
           break;
       }
     }
@@ -117,13 +119,13 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
 #endif
   //(a) reads the TID word, spinning until the lock is clear
 
-  expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+  expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
   // check if it is locked.
   // spinning until the lock is clear
 
   for (;;) {
     while (expected.lock) {
-      expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+      expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
       YIELD;
     }
 
@@ -138,7 +140,7 @@ PROMISE(void) TxnExecutor::read(std::uint64_t key) {
     // order of load don't exchange.
 
     //(e) checks the TID word again
-    check.obj_ = loadAcquire(tuple->tidword_.obj_);
+    check.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
     if (expected == check) break;
     expected = check;
 #if ADD_ANALYSIS
@@ -175,7 +177,7 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
   if (searchReadSet(key) || searchWriteSet(key)) PILO_RETURN;
   
   Tuple *tuple = (Tuple *)pro.tuple;
-  if (tuple->tidword_.latest == 0) {
+  if (tuple->fetch_tidword().latest == 0) {
 #if MASSTREE_USE
     MT.get_value(key);
 #if ADD_ANALYSIS
@@ -194,13 +196,13 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
 
   //(a) reads the TID word, spinning until the lock is clear
 
-  expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+  expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
   // check if it is locked.
   // spinning until the lock is clear
 
   for (;;) {
     while (expected.lock) {
-      expected.obj_ = loadAcquire(tuple->tidword_.obj_);
+      expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
       PILO_YIELD;
     }
 
@@ -215,7 +217,7 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
     // order of load don't exchange.
 
     //(e) checks the TID word again
-    check.obj_ = loadAcquire(tuple->tidword_.obj_);
+    check.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
     if (expected == check) break;
     expected = check;
 #if ADD_ANALYSIS
@@ -268,10 +270,10 @@ void TxnExecutor::unlockWriteSet() {
   Tidword expected, desired;
 
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
-    expected.obj_ = loadAcquire((*itr).rcdptr_->tidword_.obj_);
+    expected.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
     desired = expected;
     desired.lock = 0;
-    storeRelease((*itr).rcdptr_->tidword_.obj_, desired.obj_);
+    storeRelease((*itr).rcdptr_->fetch_tidword().obj_, desired.obj_);
   }
 }
 
@@ -280,10 +282,10 @@ void TxnExecutor::unlockWriteSet(
   Tidword expected, desired;
 
   for (auto itr = write_set_.begin(); itr != end; ++itr) {
-    expected.obj_ = loadAcquire((*itr).rcdptr_->tidword_.obj_);
+    expected.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
     desired = expected;
     desired.lock = 0;
-    storeRelease((*itr).rcdptr_->tidword_.obj_, desired.obj_);
+    storeRelease((*itr).rcdptr_->fetch_tidword().obj_, desired.obj_);
   }
 }
 
@@ -312,7 +314,7 @@ bool TxnExecutor::validationPhase() {
   Tidword check;
   for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr) {
     // 1
-    check.obj_ = loadAcquire((*itr).rcdptr_->tidword_.obj_);
+    check.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
     if ((*itr).get_tidword().epoch != check.epoch ||
         (*itr).get_tidword().tid != check.tid) {
 #if ADD_ANALYSIS
@@ -430,7 +432,7 @@ void TxnExecutor::mywrite(const Procedure &pro, std::string_view val) {
     tuple = re->rcdptr_;
   } else {
     Tuple *last_tuple = (Tuple *)pro.tuple;
-    if (last_tuple->tidword_.latest == 0) {
+    if (last_tuple->fetch_tidword().latest == 0) {
 #if MASSTREE_USE
       MT.get_value_coro(key, tuple);
 #if ADD_ANALYSIS
@@ -486,6 +488,7 @@ void TxnExecutor::writePhase() {
   wal(maxtid.obj_);
 #endif
 
+#if 1
   // write(record, commit-tid)
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     // update and unlock
@@ -495,8 +498,9 @@ void TxnExecutor::writePhase() {
     } else {
       memcpy((*itr).rcdptr_->val_, (*itr).get_val_ptr(), (*itr).get_val_length());
     }
-    storeRelease((*itr).rcdptr_->tidword_.obj_, maxtid.obj_);
+    storeRelease((*itr).rcdptr_->fetch_tidword().obj_, maxtid.obj_);
   }
+#endif
 
   read_set_.clear();
   write_set_.clear();

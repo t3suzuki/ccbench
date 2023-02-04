@@ -110,6 +110,8 @@ else ()
     add_definitions(-DWAL=0)
 endif ()
 
+add_definitions(-DTIDWORD_IN_TUPLE=1)
+#add_definitions(-DSHUFFLED_ZIPF=1)
 
 add_executable(silo_original ${SILO_SOURCES})
 #set_target_properties(silo_original PROPERTIES COMPILE_FLAGS "-g")

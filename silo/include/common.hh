@@ -60,3 +60,8 @@ alignas(CACHE_LINE_SIZE) GLOBAL uint64_t_64byte *ThLocalEpoch;
 alignas(CACHE_LINE_SIZE) GLOBAL uint64_t_64byte *CTIDW;
 
 alignas(CACHE_LINE_SIZE) GLOBAL Tuple *Table;
+
+#if TIDWORD_IN_TUPLE
+#else
+alignas(CACHE_LINE_SIZE) GLOBAL TidwordWrapper *tidwords;
+#endif

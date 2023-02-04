@@ -103,6 +103,24 @@ extern void waitForReadyOfAllThread(std::atomic <size_t> &running, const size_t 
     return false;
 }
 
+using shuffle_map_t = std::vector<uint64_t>;
+
+static shuffle_map_t g_shuffle_map;
+
+inline static void
+init_shuffle_map(uint64_t n)
+{
+  printf("done\n");
+  g_shuffle_map.resize(n);
+  for (uint64_t i=0; i<n; i++) {
+    g_shuffle_map[i] = i;
+  }
+  std::random_device rd;
+  std::mt19937 rg(rd());
+  std::shuffle(g_shuffle_map.begin(), g_shuffle_map.end(), rg);
+  printf("done %ld\n", g_shuffle_map.size());
+}
+
 inline static void makeProcedure(std::vector <Procedure> &pro, Xoroshiro128Plus &rnd,
                                  FastZipf &zipf, size_t tuple_num, size_t max_ope,
                                  size_t thread_num, size_t rratio, bool rmw, bool ycsb,
@@ -120,7 +138,11 @@ inline static void makeProcedure(std::vector <Procedure> &pro, Xoroshiro128Plus 
         size_t block_size = tuple_num / thread_num;
         tmpkey = (block_size * thread_id) + (zipf() % block_size);
       } else {
+#if SHUFFLED_ZIPF
+        tmpkey = g_shuffle_map[zipf() % tuple_num];
+#else
         tmpkey = zipf() % tuple_num;
+#endif
       }
     } else {
       if (partition) {

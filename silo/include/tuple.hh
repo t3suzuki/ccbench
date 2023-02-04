@@ -29,9 +29,31 @@ struct Tidword {
   bool operator<(const Tidword &right) const { return this->obj_ < right.obj_; }
 };
 
+
 class Tuple {
 public:
-  alignas(CACHE_LINE_SIZE) Tidword tidword_;
-
+#if TIDWORD_IN_TUPLE
+  //alignas(CACHE_LINE_SIZE)
+  Tidword tidword_;
+#endif
   char val_[VAL_SIZE];
+  inline Tidword& fetch_tidword();
 };
+
+#if TIDWORD_IN_TUPLE
+inline Tidword& Tuple::fetch_tidword() {
+  return tidword_;
+}
+#else
+class TidwordWrapper {
+public:
+  Tidword tidword_;
+};
+
+extern Tuple *Table;
+extern TidwordWrapper *tidwords;
+inline Tidword& Tuple::fetch_tidword() {
+  uint64_t index = (((uint64_t)this - (uint64_t)Table) / sizeof(Tuple));
+  return tidwords[index].tidword_;
+}
+#endif

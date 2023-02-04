@@ -435,7 +435,7 @@ int main(int argc, char *argv[]) try {
 #if DAX
   dax_init();
 #endif
-  
+
 #if MY_TIME_CORE
   bool all_done = false;
   std::thread time_thread(my_time_func, std::ref(all_done));
@@ -467,11 +467,13 @@ int main(int argc, char *argv[]) try {
   //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
   
   waitForReady(readys);
+  //system("ipmctl show -dimm -performance");
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
   }
   storeRelease(quit, true);
+  //system("ipmctl show -dimm -performance");
   for (auto &th : thv) th.join();
 
   for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
