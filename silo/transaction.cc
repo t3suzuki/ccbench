@@ -203,7 +203,7 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
   for (;;) {
     while (expected.lock) {
       expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
-      PILO_YIELD;
+      //PILO_YIELD;
     }
 
     //(b) checks whether the record is the latest version
