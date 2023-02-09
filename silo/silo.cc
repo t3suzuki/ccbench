@@ -152,7 +152,7 @@ RETRY:
     
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
-#if MYRW
+#if SKIP_INDEX
       //itr->tuple = PTX_AWAIT trans.prefetch_tree((*itr).key_);
       {
 	Tuple *tuple;
@@ -170,14 +170,14 @@ RETRY:
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
-#if MYRW
+#if SKIP_INDEX
       if ((*itr).ope_ == Ope::READ) {
-        trans.myread((*itr));
+        trans.read_skip_index((*itr));
       } else if ((*itr).ope_ == Ope::WRITE) {
-        trans.mywrite((*itr));
+        trans.write_skip_index((*itr));
       } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
-        trans.myread((*itr));
-        trans.mywrite((*itr));
+        trans.read_skip_index((*itr));
+        trans.write_skip_index((*itr));
       } else {
         ERR;
       }

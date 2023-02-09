@@ -164,8 +164,8 @@ FINISH_READ:
 }
 
 
-#if MYRW
-void TxnExecutor::myread(const Procedure &pro) {
+#if SKIP_INDEX
+void TxnExecutor::read_skip_index(const Procedure &pro) {
   std::uint64_t key = pro.key_;
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
@@ -412,8 +412,8 @@ FINISH_WRITE:
   RETURN;
 }
 
-#if MYRW
-void TxnExecutor::mywrite(const Procedure &pro, std::string_view val) {
+#if SKIP_INDEX
+void TxnExecutor::write_skip_index(const Procedure &pro, std::string_view val) {
   std::uint64_t key = pro.key_;
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
