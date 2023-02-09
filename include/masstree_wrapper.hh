@@ -156,6 +156,29 @@ public:
     bool found = AWAIT get_value_coro({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
     RETURN found;
   }
+  
+  node_type* _dfs_conv(node_type* current, int height) {
+    if (!current->isleaf()) {
+      internode_type* in = (internode_type *)current;
+      if (height < 7) {
+	for (int i=0; i<in->nkeys_+1; i++) {
+	  if (in->child_[i]) {
+	    in->child_[i] = _dfs_conv((node_type *)in->child_[i], height+1);
+	  }
+	}
+      }
+      if (height < 8) {
+	void *ptr = malloc(sizeof(internode_type));
+	memcpy(ptr, in, sizeof(internode_type));
+	node_type *n = (node_type*)ptr;
+	return n;
+      }
+    }
+    return current;
+  }
+  void dfs_conv() {
+    table_.root_ = _dfs_conv((node_type *)table_.root_, 0);
+  }
 
   inline PROMISE(bool) get_value_coro_flat(std::uint64_t _key, value_ptr_t &value_ptr) {
     std::uint64_t key_buf{__builtin_bswap64(_key)};
@@ -261,6 +284,8 @@ public:
   
     if (found) {
       value_ptr = lp.value();
+      ::prefetch(value_ptr);
+      SUSPEND;
     } else {
       printf("something wrong?\n");
       std::cout << key << std::endl;
@@ -377,6 +402,8 @@ public:
   
     if (found) {
       value_ptr = lp.value();
+      ::prefetch(value_ptr);
+      PILO_SUSPEND;
     } else {
       printf("something wrong?\n");
       std::cout << key << std::endl;
