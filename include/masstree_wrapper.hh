@@ -252,7 +252,7 @@ public:
 	}
 
 	lp.v_ = v[sense];
-	//PILO_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
+	//PTX_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
 	lp.n_ = const_cast<Masstree::leaf<table_params> *>(static_cast<const Masstree::leaf<table_params> *>(n[sense]));
       }
    
@@ -298,20 +298,20 @@ public:
     RETURN found;
   }
   
-  inline PILO_PROMISE(bool) get_value_pilo_flat(std::uint64_t _key, value_ptr_t &value_ptr) {
+  inline PTX_PROMISE(bool) get_value_ptx_flat(std::uint64_t _key, value_ptr_t &value_ptr) {
     std::uint64_t key_buf{__builtin_bswap64(_key)};
-    //bool found = PILO_AWAIT get_value_pilo({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
+    //bool found = PTX_AWAIT get_value_ptx({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
     std::string_view key{reinterpret_cast<char *>(&key_buf), sizeof(key_buf)};
     unlocked_cursor_type lp(table_, key.data(), key.size());
   
-    //bool found = PILO_AWAIT lp.find_unlocked_pilo(*ti);
+    //bool found = PTX_AWAIT lp.find_unlocked_ptx(*ti);
     bool found;
     {
       int match;
       key_indexed_position kx;
       Masstree::node_base<table_params>* root = const_cast<Masstree::node_base<table_params>*>(lp.root_);
     retry:
-      //lp.n_ = PILO_AWAIT root->reach_leaf_pilo(lp.ka_, lp.v_, *ti);
+      //lp.n_ = PTX_AWAIT root->reach_leaf_ptx(lp.ka_, lp.v_, *ti);
       {
 	const Masstree::node_base<table_params> *n[2];
 	typename Masstree::node_base<table_params>::nodeversion_type v[2];
@@ -327,7 +327,7 @@ public:
 #if 0 // t3suzuki
 	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
 	  in->prefetch256B();
-	  PILO_SUSPEND;
+	  PTX_SUSPEND;
 #endif
 	  v[sense] = n[sense]->stable_annotated(ti->stable_fence());
 	  if (v[sense].is_root())
@@ -341,7 +341,7 @@ public:
 	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
 #if 0 // t3suzuki
 	  in->prefetch();
-	  PILO_SUSPEND;
+	  PTX_SUSPEND;
 #endif
 	  int kp = Masstree::internode<table_params>::bound_type::upper(lp.ka_, *in);
 	  n[!sense] = in->child_[kp];
@@ -350,7 +350,7 @@ public:
 #if 1 // t3suzuki
 	  const Masstree::internode<table_params> *cin = static_cast<const Masstree::internode<table_params>*>(n[!sense]);
 	  cin->prefetch256B();
-	  PILO_SUSPEND;
+	  PTX_SUSPEND;
 #endif
 	  v[!sense] = n[!sense]->stable_annotated(ti->stable_fence());
 	  
@@ -370,7 +370,7 @@ public:
 	}
 
 	lp.v_ = v[sense];
-	//PILO_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
+	//PTX_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
 	lp.n_ = const_cast<Masstree::leaf<table_params> *>(static_cast<const Masstree::leaf<table_params> *>(n[sense]));
       }
    
@@ -379,13 +379,13 @@ public:
         goto retry;
    
       lp.n_->prefetchRem();
-      PILO_SUSPEND;
+      PTX_SUSPEND;
       lp.perm_ = lp.n_->permutation();
       kx = Masstree::leaf<table_params>::bound_type::lower(lp.ka_, lp);
       if (kx.p >= 0) {
         lp.lv_ = lp.n_->lv_[kx.p];
         lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    	PILO_SUSPEND;
+    	PTX_SUSPEND;
         match = lp.n_->ksuf_matches(kx.p, lp.ka_);
       } else
         match = 0;
@@ -406,19 +406,19 @@ public:
     if (found) {
       value_ptr = lp.value();
       ::prefetch(value_ptr);
-      PILO_SUSPEND;
+      PTX_SUSPEND;
     } else {
       printf("something wrong?\n");
       std::cout << key << std::endl;
       exit(2);
       value_ptr = nullptr;
     }
-    PILO_RETURN found;
+    PTX_RETURN found;
   }
   
-  inline PILO_PROMISE(bool) get_value_pilo(std::string_view key, value_ptr_t &value_ptr) {
+  inline PTX_PROMISE(bool) get_value_ptx(std::string_view key, value_ptr_t &value_ptr) {
     unlocked_cursor_type lp(table_, key.data(), key.size());
-    bool found = PILO_AWAIT lp.find_unlocked_pilo(*ti);
+    bool found = PTX_AWAIT lp.find_unlocked_ptx(*ti);
     if (found) {
       value_ptr = lp.value();
     } else {
@@ -427,13 +427,13 @@ public:
       exit(2);
       value_ptr = nullptr;
     }
-    PILO_RETURN found;
+    PTX_RETURN found;
   }
 
-  inline PILO_PROMISE(bool) get_value_pilo(std::uint64_t key, value_ptr_t &value_ptr) {
+  inline PTX_PROMISE(bool) get_value_ptx(std::uint64_t key, value_ptr_t &value_ptr) {
     std::uint64_t key_buf{__builtin_bswap64(key)};
-    bool found = PILO_AWAIT get_value_pilo({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
-    PILO_RETURN found;
+    bool found = PTX_AWAIT get_value_ptx({reinterpret_cast<char *>(&key_buf), sizeof(key_buf)}, value_ptr);
+    PTX_RETURN found;
   }
   
   inline T * get_value(std::string_view key) {

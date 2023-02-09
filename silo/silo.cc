@@ -114,10 +114,10 @@ RETRY:
   RETURN;
 }
 
-PILO_PROMISE(void) pilo_work(size_t thid, int i_coro, FastZipf &zipf,
-			     Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
-			     uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
-			     int &n_done, bool &done_coro)
+PTX_PROMISE(void) ptx_work(size_t thid, int i_coro, FastZipf &zipf,
+			   Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
+			   uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
+			   int &n_done, bool &done_coro)
 {
   while (!loadAcquire(quit)) {
     TxnExecutor trans(thid, (Result *) &myres);
@@ -153,14 +153,14 @@ RETRY:
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
 #if MYRW
-      //itr->tuple = PILO_AWAIT trans.prefetch_tree((*itr).key_);
+      //itr->tuple = PTX_AWAIT trans.prefetch_tree((*itr).key_);
       {
 	Tuple *tuple;
-	PILO_AWAIT MT.get_value_pilo_flat((*itr).key_, tuple);
+	PTX_AWAIT MT.get_value_ptx_flat((*itr).key_, tuple);
 	itr->tuple = tuple;
       }
 #else
-      PILO_AWAIT trans.prefetch_tree((*itr).key_);
+      PTX_AWAIT trans.prefetch_tree((*itr).key_);
 #endif
     }
     
@@ -226,7 +226,7 @@ RETRY:
   }
   n_done++;
   done_coro = true;
-  PILO_RETURN;
+  PTX_RETURN;
 }
 
 
@@ -350,13 +350,13 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   while (!loadAcquire(start)) _mm_pause();
   if (thid == 0) epoch_timer_start = rdtscp();
 
-#if defined(COROBASE) || defined(PILO)
+#if defined(COROBASE) || defined(PTX)
   int n_done = 0;
   bool done[N_CORO];
 #if COROBASE
   PROMISE(void) coro[N_CORO];
 #else
-  PILO_PROMISE(void) coro[N_CORO];
+  PTX_PROMISE(void) coro[N_CORO];
 #endif
   for (int i_coro=0; i_coro<N_CORO; i_coro++) {
     done[i_coro] = false;
@@ -364,8 +364,8 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
     coro[i_coro] = corobase_work(thid, i_coro, zipf, rnd, myres,
 				 quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
 #else
-    coro[i_coro] = pilo_work(thid, i_coro, zipf, rnd, myres,
-			     quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
+    coro[i_coro] = ptx_work(thid, i_coro, zipf, rnd, myres,
+			    quit, epoch_timer_start, epoch_timer_stop, n_done, done[i_coro]);
 #endif
     coro[i_coro].start();
   }
@@ -476,8 +476,8 @@ int main(int argc, char *argv[]) try {
   
 #if COROBASE
   printf("use CoroBase. N_CORO=%d\n", N_CORO);
-#elif PILO
-  printf("use PILO N_CORO=%d\n", N_CORO);
+#elif PTX
+  printf("use PTX N_CORO=%d\n", N_CORO);
 #else
   printf("use original.\n");
 #endif

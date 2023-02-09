@@ -403,12 +403,12 @@ inline unsigned long long my_rdtsc() {
   #define YIELD
 #endif
 
-#if PILO
-  #define PILO_PROMISE(t) task<t>
-  #define PILO_RETURN co_return
-  #define PILO_AWAIT co_await
+#if PTX
+  #define PTX_PROMISE(t) task<t>
+  #define PTX_RETURN co_return
+  #define PTX_AWAIT co_await
 #if defined(TR_US)
-#define PILO_SUSPEND do {                                                 \
+#define PTX_SUSPEND do {                                                 \
     unsigned long long tsc0, tsc1;                                              \
     tsc0 = get_time();                                                  \
     while (1) {                                                         \
@@ -419,13 +419,13 @@ inline unsigned long long my_rdtsc() {
     }                                                                   \
   } while (0);
 #else
-#define PILO_SUSPEND co_await std::experimental::suspend_always{}
+#define PTX_SUSPEND co_await std::experimental::suspend_always{}
 #endif
-#define PILO_YIELD co_await std::experimental::suspend_always{}
+#define PTX_YIELD co_await std::experimental::suspend_always{}
 #else
-  #define PILO_PROMISE(t) t
-  #define PILO_RETURN return
-  #define PILO_AWAIT
-  #define PILO_SUSPEND
-  #define PILO_YIELD
+  #define PTX_PROMISE(t) t
+  #define PTX_RETURN return
+  #define PTX_AWAIT
+  #define PTX_SUSPEND
+  #define PTX_YIELD
 #endif

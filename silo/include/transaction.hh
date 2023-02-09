@@ -75,7 +75,7 @@ public:
    */
   PROMISE(void) read(std::uint64_t key);
   void myread(const Procedure &pro);
-  PILO_PROMISE(Tuple *) prefetch_tree(std::uint64_t key);
+  PTX_PROMISE(Tuple *) prefetch_tree(std::uint64_t key);
 
   /**
    * @brief Search xxx set
