@@ -384,7 +384,7 @@ run_perf(const bool &start, const bool &quit)
   if(cpid == 0) {
     char buf[50];
     printf("perf...\n");
-    //sprintf(buf, "perf stat -ddd -p %d   > stat.log 2>&1", pid);
+    //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
     //sprintf(buf, "perf record -C 0-15 -g");
     sprintf(buf, "perf record -C 0-15 -g");
     execl("/bin/sh", "sh", "-c", buf, NULL);
@@ -453,6 +453,10 @@ int main(int argc, char *argv[]) try {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
   makeDB();
+#if DAX
+  MT.dfs_conv();
+#endif
+  
 
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;

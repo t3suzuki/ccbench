@@ -77,8 +77,8 @@ void displayDB() {
     cout << "------------------------------" << endl;  //-は30個
     cout << "key: " << i << endl;
     cout << "val: " << tuple->val_ << endl;
-    cout << "TIDword: " << tuple->tidword_.obj_ << endl;
-    cout << "bit: " << tuple->tidword_.obj_ << endl;
+    cout << "TIDword: " << tuple->fetch_tidword().obj_ << endl;
+    cout << "bit: " << tuple->fetch_tidword().obj_ << endl;
     cout << endl;
   }
 }
@@ -109,9 +109,9 @@ void partTableInit([[maybe_unused]] size_t thid, uint64_t start, uint64_t end) {
   for (auto i = start; i <= end; ++i) {
     Tuple *tmp;
     tmp = &Table[i];
-    tmp->tidword_.epoch = 1;
-    tmp->tidword_.latest = 1;
-    tmp->tidword_.lock = 0;
+    tmp->fetch_tidword().epoch = 1;
+    tmp->fetch_tidword().latest = 1;
+    tmp->fetch_tidword().lock = 0;
     tmp->val_[0] = 'a';
     tmp->val_[1] = '\0';
 
@@ -122,6 +122,18 @@ void partTableInit([[maybe_unused]] size_t thid, uint64_t start, uint64_t end) {
 }
 
 void makeDB() {
+
+#if SHUFFLED_ZIPF
+  init_shuffle_map(FLAGS_tuple_num);
+#endif
+  
+#if TIDWORD_IN_TUPLE
+#else
+  if (posix_memalign((void **) &tidwords, PAGE_SIZE,
+                     (FLAGS_tuple_num) * sizeof(TidwordWrapper)) != 0)
+    ERR;
+  printf("ok %p\n", tidwords);
+#endif
 #if DAX
   Table = (Tuple *)dax_malloc(FLAGS_tuple_num * sizeof(Tuple));
 #else
@@ -142,6 +154,7 @@ void makeDB() {
     thv.emplace_back(partTableInit, i, i * (FLAGS_tuple_num / maxthread),
                      (i + 1) * (FLAGS_tuple_num / maxthread) - 1);
   for (auto &th : thv) th.join();
+
 }
 
 void leaderWork(uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop) {

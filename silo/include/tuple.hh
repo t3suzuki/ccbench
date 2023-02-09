@@ -33,7 +33,9 @@ struct Tidword {
 class Tuple {
 public:
 #if TIDWORD_IN_TUPLE
-  //alignas(CACHE_LINE_SIZE)
+#if ALIGN64_TIDWORD
+  alignas(CACHE_LINE_SIZE)
+#endif
   Tidword tidword_;
 #endif
   char val_[VAL_SIZE];
