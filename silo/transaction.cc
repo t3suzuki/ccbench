@@ -165,7 +165,7 @@ FINISH_READ:
 
 
 #if MYRW
-PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
+void TxnExecutor::myread(const Procedure &pro) {
   std::uint64_t key = pro.key_;
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
@@ -174,7 +174,7 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
   /**
    * read-own-writes or re-read from local read set.
    */
-  if (searchReadSet(key) || searchWriteSet(key)) PILO_RETURN;
+  if (searchReadSet(key) || searchWriteSet(key)) return;
   
   Tuple *tuple = (Tuple *)pro.tuple;
   if (tuple->fetch_tidword().latest == 0) {
@@ -203,7 +203,6 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
   for (;;) {
     while (expected.lock) {
       expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
-      //PILO_YIELD;
     }
 
     //(b) checks whether the record is the latest version
@@ -235,7 +234,7 @@ PILO_PROMISE(void) TxnExecutor::myread(const Procedure &pro) {
 #if ADD_ANALYSIS
   sres_->local_read_latency_ += rdtscp() - start;
 #endif
-  PILO_RETURN;
+  return;
 }
 #endif
 

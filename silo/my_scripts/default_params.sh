@@ -1,7 +1,7 @@
 build_path="../build"
 skew_list="0.9"
 rratio_list="25"
-nth_list="4"
+nth_list="20"
 ntrial=1
 ncoro_list="16"
 tuple_num_list="100000000"

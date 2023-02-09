@@ -37,6 +37,17 @@
 
 using namespace std;
 
+#if MEASURE_TIME
+typedef struct {
+  alignas(64)
+  uint64_t tsc0;
+  uint64_t tsc1;
+  uint64_t tsc2;
+} measure_t;
+
+measure_t measure_times[64];
+#endif
+
 PROMISE(void) corobase_work(size_t thid, int i_coro, FastZipf &zipf,
 			    Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
 			    uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
@@ -103,7 +114,6 @@ RETRY:
   RETURN;
 }
 
-
 PILO_PROMISE(void) pilo_work(size_t thid, int i_coro, FastZipf &zipf,
 			     Xoroshiro128Plus &rnd, Result &myres, const bool &quit,
 			     uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop,
@@ -135,6 +145,10 @@ RETRY:
     }
     
     if (loadAcquire(quit)) break;
+
+#if MEASURE_TIME
+    uint64_t measure_start0 = rdtscp();
+#endif
     
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
@@ -150,16 +164,19 @@ RETRY:
 #endif
     }
     
+#if MEASURE_TIME
+    uint64_t measure_start1 = rdtscp();
+#endif
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
 #if MYRW
       if ((*itr).ope_ == Ope::READ) {
-        PILO_AWAIT trans.myread((*itr));
+        trans.myread((*itr));
       } else if ((*itr).ope_ == Ope::WRITE) {
         trans.mywrite((*itr));
       } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
-        PILO_AWAIT trans.myread((*itr));
+        trans.myread((*itr));
         trans.mywrite((*itr));
       } else {
         ERR;
@@ -178,6 +195,9 @@ RETRY:
 #endif
     }
 
+#if MEASURE_TIME
+    uint64_t measure_start2 = rdtscp();
+#endif
     if (trans.validationPhase()) {
       trans.writePhase();
       /**
@@ -186,9 +206,21 @@ RETRY:
        */
       storeRelease(myres.local_commit_counts_,
                    loadAcquire(myres.local_commit_counts_) + 1);
+#if MEASURE_TIME
+      uint64_t measure_end = rdtscp();
+      measure_times[thid].tsc0 += measure_end - measure_start0;
+      measure_times[thid].tsc1 += measure_end - measure_start1;
+      measure_times[thid].tsc2 += measure_end - measure_start2;
+#endif
     } else {
       trans.abort();
       ++myres.local_abort_counts_;
+#if MEASURE_TIME
+      uint64_t measure_end = rdtscp();
+      measure_times[thid].tsc0 += measure_end - measure_start0;
+      measure_times[thid].tsc1 += measure_end - measure_start1;
+      measure_times[thid].tsc2 += measure_end - measure_start2;
+#endif
       goto RETRY;
     }
   }
@@ -494,6 +526,21 @@ int main(int argc, char *argv[]) try {
   time_thread.join();
 #endif
 
+#if MEASURE_TIME
+  uint64_t sum0 = 0;
+  uint64_t sum1 = 0;
+  uint64_t sum2 = 0;
+  for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+    sum0 += measure_times[i].tsc0;
+    sum1 += measure_times[i].tsc1;
+    sum2 += measure_times[i].tsc2;
+  }
+  printf("total measure time0 (TX start to end latency) = %ld\n", sum0);
+  printf("total measure time1 (main-transaciton including validation time) = %ld\n", sum1);
+  printf("total measure time2 (validation time) = %ld\n", sum2);
+#endif
+
+  
   struct rusage ru;
   getrusage(RUSAGE_SELF, &ru);
   printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
