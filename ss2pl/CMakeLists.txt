@@ -22,9 +22,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CompileOptions)
 
-enable_testing()
-add_subdirectory(test)
-
 file(GLOB SS2PL_SOURCES
         "../common/result.cc"
         "../common/util.cc"
@@ -34,9 +31,9 @@ file(GLOB SS2PL_SOURCES
         "util.cc"
         )
 
-add_executable(ss2pl.exe ${SS2PL_SOURCES})
+add_executable(ss2pl_original ${SS2PL_SOURCES})
 
-target_link_libraries(ss2pl.exe
+target_link_libraries(ss2pl_original
         Boost::filesystem
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
@@ -81,3 +78,5 @@ if (DEFINED VAL_SIZE)
 else ()
     add_definitions(-DVAL_SIZE=4)
 endif ()
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")

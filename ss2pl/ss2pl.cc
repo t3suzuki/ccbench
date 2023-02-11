@@ -31,6 +31,8 @@
 #include "include/transaction.hh"
 #include "include/util.hh"
 
+#include "../include/dax.h"
+
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   Result &myres = std::ref(SS2PLResult[thid]);
   Xoroshiro128Plus rnd;
@@ -91,7 +93,7 @@ RETRY:
 }
 
 int main(int argc, char *argv[]) try {
-  gflags::SetUsageMessage("2PL benchmark.");
+  //gflags::SetUsageMessage("2PL benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
   makeDB();
