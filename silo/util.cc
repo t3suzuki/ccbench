@@ -45,15 +45,20 @@ void chkArg() {
     ERR;
   }
 
+#if N_CORO
+  int conc_num = FLAGS_thread_num * N_CORO;
+#else
+  int conc_num = FLAGS_thread_num;
+#endif
   if (posix_memalign((void **) &ThLocalEpoch, CACHE_LINE_SIZE,
-                     FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                     conc_num * sizeof(uint64_t_64byte)) != 0)
     ERR;
   if (posix_memalign((void **) &CTIDW, CACHE_LINE_SIZE,
-                     FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                     conc_num * sizeof(uint64_t_64byte)) != 0)
     ERR;
 
   // init
-  for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+  for (unsigned int i = 0; i < conc_num; ++i) {
     ThLocalEpoch[i].obj_ = 0;
     CTIDW[i].obj_ = 0;
   }
