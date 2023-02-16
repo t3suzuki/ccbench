@@ -31,9 +31,10 @@ file(GLOB CICADA_SOURCES
         "util.cc"
         )
 
-add_executable(cicada.exe ${CICADA_SOURCES})
+add_executable(cicada_original ${CICADA_SOURCES})
 
-target_link_libraries(cicada.exe
+set(CICADA_LIBS
+  numa
         Boost::filesystem
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
@@ -41,7 +42,9 @@ target_link_libraries(cicada.exe
         Threads::Threads
         )
 
-target_include_directories(cicada.exe
+target_link_libraries(cicada_original ${CICADA_LIBS})
+      
+target_include_directories(cicada_original
         PRIVATE ${PROJECT_SOURCE_DIR}/../include
         PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
         )
@@ -117,3 +120,24 @@ if (DEFINED WORKER1_INSERT_DELAY_RPHASE)
 else ()
     add_definitions(-DWORKER1_INSERT_DELAY_RPHASE=0)
 endif ()
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
+
+
+if (DEFINED CORO)
+  foreach(N_CORO 1 2 4 8)
+    #add_executable(corobase_${N_CORO}coro ${CICADA_SOURCES})
+    #set_target_properties(corobase_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DN_CORO=${N_CORO}")
+    #target_link_libraries(corobase_${N_CORO}coro ${CICADA_LIBS})
+    
+    add_executable(ptx_${N_CORO}coro ${CICADA_SOURCES})
+
+    target_include_directories(ptx_${N_CORO}coro
+      PRIVATE ${PROJECT_SOURCE_DIR}/../include
+      PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
+      )
+    set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
+    #set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DN_CORO=${N_CORO}")
+    target_link_libraries(ptx_${N_CORO}coro ${CICADA_LIBS})
+  endforeach()
+endif()

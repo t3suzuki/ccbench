@@ -444,9 +444,15 @@ int main(int argc, char *argv[]) try {
   chkArg();
   makeDB();
 #if DAX
+#if DAX_MIGRATE
+  printf("Migrate SCM->DRAM...\n");
   MT.dfs_conv();
 #endif
-  
+#endif
+
+#if SKIP_INDEX
+  printf("Skipping index enabled.\n");
+#endif
 
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;

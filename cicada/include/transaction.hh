@@ -111,8 +111,10 @@ public:
   void tbegin();
 
   void tread(const uint64_t key);
+  void tread_skip_index(Tuple *tuple, const uint64_t key);
 
   void twrite(const uint64_t key);
+  void twrite_skip_index(Tuple *tuple, const uint64_t key);
 
   bool validation();
 

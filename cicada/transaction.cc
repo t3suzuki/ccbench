@@ -181,6 +181,91 @@ FINISH_TREAD:
   return;
 }
 
+
+
+
+void TxExecutor::tread_skip_index(Tuple *tuple, const uint64_t key) {
+#if ADD_ANALYSIS
+  uint64_t start = rdtscp();
+#endif  // if ADD_ANALYSIS
+
+  /**
+   * read-own-writes or re-read from local read set.
+   */
+  if (searchWriteSet(key) || searchReadSet(key)) goto FINISH_TREAD;
+
+
+  // Search version
+  Version *ver, *later_ver;
+  later_ver = nullptr;
+
+#if SINGLE_EXEC
+  ver = &tuple->inline_ver_;
+#else
+
+  /**
+   * Choose the correct timestamp from write timestamp and read timestamp.
+   */
+  uint64_t trts;
+  if ((*this->pro_set_.begin()).ronly_) {
+    trts = this->rts_;
+  } else {
+    trts = this->wts_.ts_;
+  }
+
+  /**
+   * Scan to the area to be viewed
+   */
+  ver = tuple->ldAcqLatest();
+  while (ver->ldAcqWts() > trts) {
+    later_ver = ver;
+    ver = ver->ldAcqNext();
+  }
+  while (ver->status_.load(memory_order_acquire) != VersionStatus::committed) {
+    /**
+     * Wait for the result of the pending version in the view.
+     */
+    while (ver->status_.load(memory_order_acquire) == VersionStatus::pending) {
+    }
+    if (ver->status_.load(memory_order_acquire) == VersionStatus::aborted) {
+      ver = ver->ldAcqNext();
+    }
+  }
+#endif
+
+  /**
+   * Read payload.
+   */
+  memcpy(return_val_, ver->val_, VAL_SIZE);
+
+  /**
+   * If read-only tx, not track or validate read_set_
+   */
+  if ((*this->pro_set_.begin()).ronly_ == false) {
+    read_set_.emplace_back(key, tuple, later_ver, ver);
+  }
+
+#if INLINE_VERSION_OPT
+#if INLINE_VERSION_PROMOTION
+#if ADD_ANALYSIS
+  cres_->local_read_latency_ += rdtscp() - start;
+#endif  // if ADD_ANALYSIS
+  inlineVersionPromotion(key, tuple, later_ver, ver);
+  goto END_TREAD;
+#endif  // if INLINE_VERSION_PROMOTION
+#endif  // if INLINE_VERSION_OPT
+
+FINISH_TREAD:
+
+#if ADD_ANALYSIS
+  cres_->local_read_latency_ += rdtscp() - start;
+#endif
+
+  END_TREAD:
+
+  return;
+}
+
 /**
  * @brief Transaction write function.
  * @param [in] key The key of key-value
@@ -227,6 +312,103 @@ void TxExecutor::twrite(const uint64_t key) {
 #else
     tuple = get_tuple(Table, key);
 #endif  // if MASSTREE_USE
+  }
+
+#if SINGLE_EXEC
+  write_set_.emplace_back(key, tuple, nullptr, &tuple->inline_ver_, rmw);
+#else
+  Version *later_ver, *ver;
+  later_ver = nullptr;
+  ver = tuple->ldAcqLatest();
+
+  if (rmw || WRITE_LATEST_ONLY) {
+    /**
+     * Search version (for early abort check)
+     * search latest (committed or pending) version and use for early abort
+     * check pending version may be committed, so use for early abort check.
+     */
+
+    /**
+     * Early abort check(EAC)
+     * here, version->status is commit or pending.
+     */
+    if (ver->wts_.load(memory_order_acquire) > this->wts_.ts_) {
+      /**
+       * if pending, it don't have to be aborted.
+       * But it may be aborted, so early abort.
+       * if committed, it must be aborted in validaiton phase due to order of
+       * newest to oldest.
+       */
+      this->status_ = TransactionStatus::abort;
+      goto FINISH_TWRITE;
+    }
+  } else {
+    /**
+     * not rmw
+     */
+    while (ver->wts_.load(memory_order_acquire) > this->wts_.ts_) {
+      later_ver = ver;
+      ver = ver->ldAcqNext();
+    }
+  }
+
+  /**
+   * Constraint from new to old.
+   */
+  if ((ver->ldAcqRts() > this->wts_.ts_) &&
+      (ver->ldAcqStatus() == VersionStatus::committed)) {
+    /**
+     * It must be aborted in validation phase, so early abort.
+     */
+    this->status_ = TransactionStatus::abort;
+    goto FINISH_TWRITE;
+  }
+
+  Version *new_ver;
+  new_ver = newVersionGeneration(tuple);
+  write_set_.emplace_back(key, tuple, later_ver, new_ver, rmw);
+#endif  // if SINGLE_EXEC
+
+FINISH_TWRITE:
+
+#if ADD_ANALYSIS
+  cres_->local_write_latency_ += rdtscp() - start;
+#endif  // if ADD_ANALYSIS
+
+  return;
+}
+
+
+void TxExecutor::twrite_skip_index(Tuple *_tuple, const uint64_t key) {
+#if ADD_ANALYSIS
+  uint64_t start = rdtscp();
+#endif  // if ADD_ANALYSIS
+
+  /**
+   * Update  from local write set.
+   * Special treat due to performance.
+   */
+  if (searchWriteSet(key)) goto FINISH_TWRITE;
+
+  Tuple *tuple;
+  bool rmw;
+  rmw = false;
+  ReadElement<Tuple> *re;
+  re = searchReadSet(key);
+  if (re) {
+    /**
+     * If it can find record in read set, use this for high performance.
+     */
+    rmw = true;
+    tuple = re->rcdptr_;
+    /* Now, it is difficult to use re->later_ver_ by simple customize.
+     * Because if this write is from inline version promotion which is from read
+     * only tx, the re->later_ver is suitable for read only search by read only
+     * timestamp. Of course, it is unsuitable for search for write. It is high
+     * cost to consider these things.
+     * I try many somethings but it can't improve performance. cost > profit.*/
+  } else {
+    tuple = _tuple;
   }
 
 #if SINGLE_EXEC

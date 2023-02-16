@@ -20,8 +20,15 @@
 
 using std::cout, std::endl;
 
+uint64_t conc_num;
+    
 void chkArg() {
     displayParameter();
+#if N_CORO
+    conc_num = FLAGS_thread_num * N_CORO;
+#else
+    conc_num = FLAGS_thread_num;
+#endif    
 
     if (FLAGS_rratio > 100) {
         SPDLOG_INFO("rratio [%%] must be 0 ~ 100)");
@@ -39,36 +46,36 @@ void chkArg() {
     }
 
     if (posix_memalign((void**) &ThreadRtsArrayForGroup, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &ThreadWtsArray, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &ThreadRtsArray, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &GROUP_COMMIT_INDEX, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &GROUP_COMMIT_COUNTER, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &GCFlag, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
     if (posix_memalign((void**) &GCExecuteFlag, CACHE_LINE_SIZE,
-                       FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
+                       conc_num * sizeof(uint64_t_64byte)) != 0)
         ERR;
 
     SLogSet = new Version* [(FLAGS_max_ope) * (FLAGS_group_commit)];
-    PLogSet = new Version** [FLAGS_thread_num];
+    PLogSet = new Version** [conc_num];
 
-    for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+    for (unsigned int i = 0; i < conc_num; ++i) {
         PLogSet[i] = new Version* [(FLAGS_max_ope) * (FLAGS_group_commit)];
     }
 
     // init
-    for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+    for (unsigned int i = 0; i < conc_num; ++i) {
         GCFlag[i].obj_ = 0;
         GCExecuteFlag[i].obj_ = 0;
         GROUP_COMMIT_INDEX[i].obj_ = 0;
@@ -167,7 +174,7 @@ void displayParameter() {
 
 [[maybe_unused]] void displayThreadWtsArray() {
     cout << "ThreadWtsArray:" << endl;
-    for (unsigned int i = 0; i < FLAGS_thread_num; i++) {
+    for (unsigned int i = 0; i < conc_num; i++) {
         cout << "thid " << i << ": " << ThreadWtsArray[i].obj_ << endl;
     }
     cout << endl << endl;
@@ -175,7 +182,7 @@ void displayParameter() {
 
 [[maybe_unused]] void displayThreadRtsArray() {
     cout << "ThreadRtsArray:" << endl;
-    for (unsigned int i = 0; i < FLAGS_thread_num; i++) {
+    for (unsigned int i = 0; i < conc_num; i++) {
         cout << "thid " << i << ": " << ThreadRtsArray[i].obj_ << endl;
     }
     cout << endl << endl;
@@ -248,7 +255,7 @@ void deleteDB() {
     delete GCFlag;
     delete GCExecuteFlag;
     delete SLogSet;
-    for (uint i = 0; i < FLAGS_thread_num; ++i) delete PLogSet[i];
+    for (uint i = 0; i < conc_num; ++i) delete PLogSet[i];
     delete PLogSet;
 }
 
@@ -275,7 +282,7 @@ void makeDB(uint64_t* initial_wts) {
 
 void leaderWork([[maybe_unused]] Backoff &backoff) {
     bool gc_update{true};
-    for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+    for (unsigned int i = 0; i < conc_num; ++i) {
         // check all thread's flag raising
         if (__atomic_load_n(&(GCFlag[i].obj_), __ATOMIC_ACQUIRE) == 0) {
             gc_update = false;
@@ -293,7 +300,7 @@ void leaderWork([[maybe_unused]] Backoff &backoff) {
         }
 
         // It already included value of worker whose id is 0, so starts from id 1.
-        for (unsigned int i = 1; i < FLAGS_thread_num; ++i) {
+        for (unsigned int i = 1; i < conc_num; ++i) {
             uint64_t tmp = __atomic_load_n(&(ThreadWtsArray[i].obj_), __ATOMIC_ACQUIRE);
             if (minw > tmp) minw = tmp;
 
@@ -309,7 +316,7 @@ void leaderWork([[maybe_unused]] Backoff &backoff) {
         MinRts.store(minr, memory_order_release);
 
         // downgrade gc flag
-        for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
+        for (unsigned int i = 0; i < conc_num; ++i) {
             __atomic_store_n(&(GCFlag[i].obj_), 0, __ATOMIC_RELEASE);
             __atomic_store_n(&(GCExecuteFlag[i].obj_), 1, __ATOMIC_RELEASE);
         }
