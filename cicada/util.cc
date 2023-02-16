@@ -18,6 +18,8 @@
 #include "logger.h"
 #include "masstree_wrapper.hh"
 
+void *dax_malloc(size_t sz);
+
 using std::cout, std::endl;
 
 uint64_t conc_num;
@@ -245,8 +247,10 @@ void deleteDB() {
         thv.emplace_back(partTableDelete, i, i * (FLAGS_tuple_num / maxthread),
                          (i + 1) * (FLAGS_tuple_num / maxthread) - 1);
     for (auto &th : thv) th.join();
-
+#if DAX
+#else
     delete Table;
+#endif
     delete ThreadRtsArrayForGroup;
     delete ThreadWtsArray;
     delete ThreadRtsArray;
@@ -260,12 +264,18 @@ void deleteDB() {
 }
 
 void makeDB(uint64_t* initial_wts) {
+
+#if DAX
+  Table = (Tuple *)dax_malloc(FLAGS_tuple_num * sizeof(Tuple));
+  printf("Table %p\n", Table);
+#else
     if (posix_memalign((void**) &Table, PAGE_SIZE, FLAGS_tuple_num * sizeof(Tuple)) !=
         0)
         ERR;
 #if dbs11
     if (madvise((void *)Table, (FLAGS_tuple_num) * sizeof(Tuple), MADV_HUGEPAGE) != 0)
       ERR;
+#endif
 #endif
 
     TimeStamp tstmp;

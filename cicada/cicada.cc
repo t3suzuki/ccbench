@@ -334,11 +334,27 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
 
 thread_local tcalloc coroutine_allocator;
 int main(int argc, char* argv[]) try {
+#if DAX
+  dax_init();
+#endif
+  
   //gflags::SetUsageMessage("Cicada benchmark.");
     gflags::ParseCommandLineFlags(&argc, &argv, true);
     chkArg();
     uint64_t initial_wts;
     makeDB(&initial_wts);
+
+#if DAX
+#if DAX_MIGRATE
+  printf("Migrate SCM->DRAM...\n");
+  MT.dfs_conv();
+#endif
+#endif
+
+#if SKIP_INDEX
+  printf("Skipping index enabled.\n");
+#endif
+
     MinWts.store(initial_wts + 2, memory_order_release);
 
     alignas(CACHE_LINE_SIZE) bool start = false;
@@ -363,6 +379,11 @@ int main(int argc, char* argv[]) try {
     ShowOptParameters();
     CicadaResult[0].displayAllResult(FLAGS_clocks_per_us, FLAGS_extime, FLAGS_thread_num);
     deleteDB();
+    
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
+    printf("DAX USED: %f MB\n", dax_used / 1024.0 / 1024.0);
 
     return 0;
 } catch (std::bad_alloc&) {

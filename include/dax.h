@@ -1,5 +1,9 @@
 #pragma once
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 bool dax_enabled = false;
 static size_t dax_used = 0;
 

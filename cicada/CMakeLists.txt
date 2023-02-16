@@ -141,3 +141,23 @@ if (DEFINED CORO)
     target_link_libraries(ptx_${N_CORO}coro ${CICADA_LIBS})
   endforeach()
 endif()
+
+if (DEFINED DAX)
+  add_executable(cicada_dax ${CICADA_SOURCES})
+  target_include_directories(cicada_dax
+    PRIVATE ${PROJECT_SOURCE_DIR}/../include
+    PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
+    )
+  set_target_properties(cicada_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DDAX_MIGRATE=1")
+  target_link_libraries(cicada_dax ${CICADA_LIBS})
+
+  foreach(N_CORO 1 2 4 8 16 32 64 128)
+    add_executable(ptx_dax_${N_CORO}coro ${CICADA_SOURCES})
+    target_include_directories(ptx_dax_${N_CORO}coro
+      PRIVATE ${PROJECT_SOURCE_DIR}/../include
+      PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
+      )
+    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
+    target_link_libraries(ptx_dax_${N_CORO}coro ${CICADA_LIBS})
+  endforeach()
+endif()
