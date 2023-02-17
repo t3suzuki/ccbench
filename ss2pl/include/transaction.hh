@@ -54,6 +54,12 @@ public:
 
   void readWrite(uint64_t key);
 
+  void read_skip_index(const Procedure &pro);
+
+  void write_skip_index(const Procedure &pro);
+
+  void readWrite_skip_index(const Procedure &pro);
+  
   void commit();
 
   void abort();
