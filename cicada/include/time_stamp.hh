@@ -8,7 +8,7 @@ public:
   alignas(CACHE_LINE_SIZE) uint64_t ts_ = 0;
   uint64_t localClock_ = 0;
   uint64_t clockBoost_ = 0;
-  uint8_t thid_;
+  tid_t thid_;
 
   TimeStamp() {}
 
@@ -21,13 +21,13 @@ public:
     clockBoost_ = CLOCK_PER_US;
   }
 
-  inline void generateTimeStampFirst(uint8_t tid) {
+  inline void generateTimeStampFirst(tid_t tid) {
     localClock_ = rdtscp();
     ts_ = (localClock_ << (sizeof(tid) * 8)) | tid;
     thid_ = tid;
   }
 
-  inline void generateTimeStamp(uint8_t tid) {
+  inline void generateTimeStamp(tid_t tid) {
     uint64_t tmp = rdtscp();
     uint64_t elapsedTime = tmp - localClock_;
     if (tmp < localClock_) elapsedTime = 0;

@@ -18,14 +18,14 @@ public:
   atomic<Version *> latest_;
   atomic <uint64_t> min_wts_;
   atomic <uint64_t> continuing_commit_;
-  atomic <uint8_t> gc_lock_;
+  atomic <tid_t> gc_lock_;
 
   Tuple() : latest_(nullptr), gc_lock_(0) {}
 
   Version *ldAcqLatest() { return latest_.load(std::memory_order_acquire); }
 
-  bool getGCRight(uint8_t thid) {
-    uint8_t expected, desired(thid);
+  bool getGCRight(tid_t thid) {
+    tid_t expected, desired(thid);
     expected = this->gc_lock_.load(std::memory_order_acquire);
     for (;;) {
       if (expected != 0) return false;

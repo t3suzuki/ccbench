@@ -23,7 +23,7 @@ void *dax_malloc(size_t sz);
 using std::cout, std::endl;
 
 uint64_t conc_num;
-    
+
 void chkArg() {
     displayParameter();
 #if N_CORO
@@ -267,7 +267,7 @@ void makeDB(uint64_t* initial_wts) {
 
 #if DAX
   Table = (Tuple *)dax_malloc(FLAGS_tuple_num * sizeof(Tuple));
-  printf("Table %p\n", Table);
+  printf("Table malloc: %f MB\n", FLAGS_tuple_num * sizeof(Tuple) / 1024.0 / 1024.0);
 #else
     if (posix_memalign((void**) &Table, PAGE_SIZE, FLAGS_tuple_num * sizeof(Tuple)) !=
         0)

@@ -17,8 +17,6 @@
 #include "../include/dax.h"
 
 using namespace std;
-uint64_t val = 0;
-uint64_t resu = 0;
 
 PTX_PROMISE(void) ptx_work(size_t thid, TxExecutor *trans, int i_coro, FastZipf &zipf,
 			   Xoroshiro128Plus &rnd, Result &myres, const bool &quit, Backoff &backoff,
@@ -127,7 +125,6 @@ RETRY:
             /**
              * Validation phase
              */
-	  val++;
             if (!trans->validation()) {
                 trans->abort();
 #if SINGLE_EXEC
@@ -379,7 +376,7 @@ int main(int argc, char* argv[]) try {
     ShowOptParameters();
     CicadaResult[0].displayAllResult(FLAGS_clocks_per_us, FLAGS_extime, FLAGS_thread_num);
     deleteDB();
-    
+
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
     printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
