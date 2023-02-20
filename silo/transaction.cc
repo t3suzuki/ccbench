@@ -63,8 +63,8 @@ void TxnExecutor::lockWriteSet() {
 [[maybe_unused]] retry
   :
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
-    expected.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
     for (;;) {
+      expected.obj_ = loadAcquire((*itr).rcdptr_->fetch_tidword().obj_);
       if (expected.lock) {
 #if NO_WAIT_LOCKING_IN_VALIDATION
         this->status_ = TransactionStatus::kAborted;
