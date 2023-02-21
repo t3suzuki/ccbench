@@ -26,6 +26,8 @@
 #include "include/transaction.hh"
 #include "include/util.hh"
 
+#include "../include/dax.h"
+
 using namespace std;
 
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
@@ -41,7 +43,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   MasstreeWrapper<Tuple>::thread_init(int(thid));
 #endif
 
-#ifdef Linux
+#if 1
   setThreadAffinity(thid);
 #endif  // Linux
 
@@ -103,7 +105,7 @@ RETRY:
 }
 
 int main(int argc, char *argv[]) try {
-  gflags::SetUsageMessage("MOCC benchmark.");
+  //gflags::SetUsageMessage("MOCC benchmark.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   chkArg();
   makeDB();

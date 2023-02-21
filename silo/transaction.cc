@@ -236,6 +236,80 @@ void TxnExecutor::read_skip_index(const Procedure &pro) {
 #endif
   return;
 }
+
+
+PTX_PROMISE(void) TxnExecutor::read_skip_index2(const Procedure &pro) {
+  std::uint64_t key = pro.key_;
+#if ADD_ANALYSIS
+  std::uint64_t start = rdtscp();
+#endif
+
+  /**
+   * read-own-writes or re-read from local read set.
+   */
+  if (searchReadSet(key) || searchWriteSet(key)) PTX_RETURN;
+  
+  Tuple *tuple = (Tuple *)pro.tuple;
+  if (tuple->fetch_tidword().latest == 0) {
+#if MASSTREE_USE
+    MT.get_value(key);
+#if ADD_ANALYSIS
+    ++sres_->local_tree_traversal_;
+#endif
+#else
+    tuple = get_tuple(Table, key);
+#endif
+  }
+  
+  
+  // these variable cause error (-fpermissive)
+  // "crosses initialization of ..."
+  // So it locate before first goto instruction.
+  Tidword expected, check;
+
+  //(a) reads the TID word, spinning until the lock is clear
+
+  expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
+  // check if it is locked.
+  // spinning until the lock is clear
+
+  for (;;) {
+    while (expected.lock) {
+      expected.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
+      PTX_YIELD;
+    }
+
+    //(b) checks whether the record is the latest version
+    // omit. because this is implemented by single version
+
+    //(c) reads the data
+    memcpy(return_val_, tuple->val_, VAL_SIZE);
+
+    //(d) performs a memory fence
+    // don't need.
+    // order of load don't exchange.
+
+    //(e) checks the TID word again
+    check.obj_ = loadAcquire(tuple->fetch_tidword().obj_);
+    if (expected == check) break;
+    expected = check;
+#if ADD_ANALYSIS
+    ++sres_->local_extra_reads_;
+#endif
+  }
+
+  read_set_.emplace_back(key, tuple, return_val_, expected);
+  // emplace is often better performance than push_back.
+
+#if SLEEP_READ_PHASE
+  sleepTics(SLEEP_READ_PHASE);
+#endif
+
+#if ADD_ANALYSIS
+  sres_->local_read_latency_ += rdtscp() - start;
+#endif
+  PTX_RETURN;
+}
 #endif
 
 PTX_PROMISE(Tuple *) TxnExecutor::prefetch_tree(std::uint64_t key) {

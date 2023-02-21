@@ -178,10 +178,12 @@ RETRY:
 #if SKIP_INDEX
       if ((*itr).ope_ == Ope::READ) {
         trans.read_skip_index((*itr));
+	//PTX_AWAIT trans.read_skip_index2((*itr));
       } else if ((*itr).ope_ == Ope::WRITE) {
         trans.write_skip_index((*itr));
       } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
         trans.read_skip_index((*itr));
+	//PTX_AWAIT trans.read_skip_index2((*itr));
         trans.write_skip_index((*itr));
       } else {
         ERR;
@@ -408,9 +410,9 @@ run_perf(const bool &start, const bool &quit)
   if(cpid == 0) {
     char buf[50];
     printf("perf...\n");
-    //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
+    sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
     //sprintf(buf, "perf record -C 0-15 -g");
-    sprintf(buf, "perf record -C 0-15 -g");
+    //sprintf(buf, "perf record -C 0-19 -g");
     execl("/bin/sh", "sh", "-c", buf, NULL);
   } else {
     setpgid(cpid, 0);
@@ -464,7 +466,7 @@ int main(int argc, char *argv[]) try {
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
   
-  //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+  std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
   
   waitForReady(readys);
   //system("ipmctl show -dimm -performance");

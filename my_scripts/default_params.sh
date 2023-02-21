@@ -7,5 +7,5 @@ ncoro_list="16"
 tuple_num_list="400000000"
 taskset="taskset -c 0-19"
 extime=10
-max_ope=10
+max_ope_list="10"
 rmw="-rmw 1"

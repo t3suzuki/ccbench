@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <thread>
+#include <signal.h>
 
 #define GLOBAL_VALUE_DEFINE
 
@@ -328,6 +329,31 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
     //printf("%ld %ld\n", val, resu);
 }
 
+
+void
+run_perf(const bool &start, const bool &quit)
+{
+  while (!loadAcquire(start)) _mm_pause();
+
+#if 1
+  int pid = getpid();
+  int cpid = fork();
+  if(cpid == 0) {
+    char buf[50];
+    printf("perf...\n");
+    sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
+    //sprintf(buf, "perf record -C 0-15 -g");
+    //sprintf(buf, "perf record -C 0-19 -g");
+    execl("/bin/sh", "sh", "-c", buf, NULL);
+  } else {
+    setpgid(cpid, 0);
+    while (!loadAcquire(quit)) _mm_pause();
+    kill(-cpid, SIGINT);
+  }
+#endif
+}
+
+
 thread_local tcalloc coroutine_allocator;
 int main(int argc, char* argv[]) try {
 #if DAX
@@ -361,6 +387,9 @@ int main(int argc, char* argv[]) try {
     for (size_t i = 0; i < FLAGS_thread_num; ++i)
         thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                          std::ref(quit));
+    
+    std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+    
     waitForReady(readys);
     storeRelease(start, true);
     for (size_t i = 0; i < FLAGS_extime; ++i) {

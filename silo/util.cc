@@ -45,20 +45,15 @@ void chkArg() {
     ERR;
   }
 
-#if N_CORO
-  int conc_num = FLAGS_thread_num * N_CORO;
-#else
-  int conc_num = FLAGS_thread_num;
-#endif
   if (posix_memalign((void **) &ThLocalEpoch, CACHE_LINE_SIZE,
-                     conc_num * sizeof(uint64_t_64byte)) != 0)
+                     FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
     ERR;
   if (posix_memalign((void **) &CTIDW, CACHE_LINE_SIZE,
-                     conc_num * sizeof(uint64_t_64byte)) != 0)
+                     FLAGS_thread_num * sizeof(uint64_t_64byte)) != 0)
     ERR;
 
   // init
-  for (unsigned int i = 0; i < conc_num; ++i) {
+  for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
     ThLocalEpoch[i].obj_ = 0;
     CTIDW[i].obj_ = 0;
   }
@@ -139,8 +134,11 @@ void makeDB() {
     ERR;
   printf("ok %p\n", tidwords);
 #endif
+
+  printf("alloc for tuples : %ld\n", FLAGS_tuple_num * sizeof(Tuple));
 #if DAX
   Table = (Tuple *)dax_malloc(FLAGS_tuple_num * sizeof(Tuple));
+  printf("Table malloc: %f MB\n", FLAGS_tuple_num * sizeof(Tuple) / 1024.0 / 1024.0);
 #else
   if (posix_memalign((void **) &Table, PAGE_SIZE,
                      (FLAGS_tuple_num) * sizeof(Tuple)) != 0)

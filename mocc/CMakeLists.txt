@@ -85,3 +85,5 @@ if (DEFINED VAL_SIZE)
 else ()
     add_definitions(-DVAL_SIZE=4)
 endif ()
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
