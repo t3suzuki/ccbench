@@ -50,7 +50,7 @@ class MasstreeWrapper {
 public:
   static constexpr std::uint64_t insert_bound = UINT64_MAX;  // 0xffffff;
   // static constexpr std::uint64_t insert_bound = 0xffffff; //0xffffff;
-  struct table_params : public Masstree::nodeparams<15, 15> {
+  struct table_params : public Masstree::nodeparams<MASSTREE_FANOUT, MASSTREE_FANOUT> {
     typedef T *value_type;
     typedef Masstree::value_print<value_type> value_print_type;
     typedef threadinfo threadinfo_type;

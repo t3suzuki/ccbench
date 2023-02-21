@@ -466,7 +466,7 @@ int main(int argc, char *argv[]) try {
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
   
-  std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+  //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
   
   waitForReady(readys);
   //system("ipmctl show -dimm -performance");
@@ -511,6 +511,7 @@ int main(int argc, char *argv[]) try {
   getrusage(RUSAGE_SELF, &ru);
   printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
   printf("DAX USED: %f MB\n", dax_used / 1024.0 / 1024.0);
+  printf("Masstree prefetch count %d\n", MASSTREE_PREFETCH_COUNT);
   
   return 0;
 } catch (bad_alloc) {
