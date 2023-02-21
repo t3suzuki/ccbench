@@ -64,6 +64,8 @@ RETRY:
 #if SKIP_INDEX
 	  itr->tuple = tuple;
 #endif
+	  if (tuple->latest_)
+	    ::prefetch(tuple->latest_);
 	}
 	
         trans.tbegin();
@@ -388,7 +390,7 @@ int main(int argc, char* argv[]) try {
         thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                          std::ref(quit));
     
-    std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+    //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
     
     waitForReady(readys);
     storeRelease(start, true);
