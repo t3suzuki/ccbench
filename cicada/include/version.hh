@@ -12,9 +12,6 @@
 
 using namespace std;
 
-using tid_t = uint16_t;
-//using tid_t = uint8_t;
-
 enum class VersionStatus : uint8_t {
   invalid,
   pending,

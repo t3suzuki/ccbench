@@ -41,7 +41,7 @@ public:
   Result *cres_ = nullptr;
 
   bool ronly_;
-  tid_t thid_ = 0;
+  uint8_t thid_ = 0;
   uint64_t rts_;
   uint64_t start_, stop_;                // for one-sided synchronization
   uint64_t grpcmt_start_, grpcmt_stop_;  // for group commit
@@ -50,7 +50,7 @@ public:
   char return_val_[VAL_SIZE] = {};
   char write_val_[VAL_SIZE] = {};
 
-  TxExecutor(tid_t thid, Result *cres) : cres_(cres), thid_(thid) {
+  TxExecutor(uint8_t thid, Result *cres) : cres_(cres), thid_(thid) {
     // wait to initialize MinWts
     while (MinWts.load(memory_order_acquire) == 0);
     rts_ = MinWts.load(memory_order_acquire) - 1;
