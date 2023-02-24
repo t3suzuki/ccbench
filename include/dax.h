@@ -12,7 +12,7 @@ static char *dax_base;
 void
 dax_init()
 {
-  char path[] = "/dev/dax1.0";
+  char path[] = "/dev/dax0.0";
   int fd = open(path, O_RDWR);
   if (fd == -1) {
     perror("open");

@@ -14,6 +14,7 @@ do
 			do
 			    exe=$build_path/$1_${ncoro}coro
 			    echo "mode=$exe tuple_num=$tuple_num nth=$nth rratio=$rratio skew=$skew itrial=$itrial $rmw"
+			    echo "$taskset $exe -tuple_num $tuple_num -thread_num $nth -rratio $rratio -max_ope $max_ope -extime $extime -zipf_skew $skew $rmw"
 			    $taskset $exe -tuple_num $tuple_num -thread_num $nth -rratio $rratio -max_ope $max_ope -extime $extime -zipf_skew $skew $rmw
 			done
 		    done

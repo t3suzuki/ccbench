@@ -121,11 +121,7 @@ PTX_PROMISE(void) ptx_work(size_t thid, int i_coro, FastZipf &zipf,
 			   int &n_done, bool &done_coro)
 {
   while (!loadAcquire(quit)) {
-#if N_CORO
-    TxnExecutor trans(thid * N_CORO + i_coro, (Result *) &myres);
-#else
     TxnExecutor trans(thid, (Result *) &myres);
-#endif
 #if PARTITION_TABLE
     makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope,
                   FLAGS_thread_num, FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, true,
