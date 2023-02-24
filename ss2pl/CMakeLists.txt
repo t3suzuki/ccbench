@@ -86,7 +86,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdl
 
 
 if (DEFINED CORO)
-  foreach(N_CORO 1 2 4 8)
+  foreach(N_CORO 1 2 4 8 16)
     #add_executable(corobase_${N_CORO}coro ${SS2PL_SOURCES})
     #set_target_properties(corobase_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DN_CORO=${N_CORO}")
     #target_link_libraries(corobase_${N_CORO}coro ${SS2PL_LIBS})

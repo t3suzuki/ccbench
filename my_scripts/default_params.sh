@@ -1,4 +1,4 @@
-build_path="../build"
+build_path="../build4"
 skew_list="0.9"
 rratio_list="50"
 nth_list="20"
