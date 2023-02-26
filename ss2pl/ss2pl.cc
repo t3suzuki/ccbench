@@ -1,4 +1,3 @@
-
 #include <ctype.h>  //isdigit,
 #include <pthread.h>
 #include <string.h>       //strlen,
@@ -38,8 +37,8 @@ PTX_PROMISE(void) ptx_work(size_t thid, FastZipf &zipf,
 			   int &n_done, bool &done_coro
  )
 {
+  TxExecutor trans(thid, (Result *) &myres);
   while (!loadAcquire(quit)) {
-    TxExecutor trans(thid, (Result *) &myres);
     makeProcedure(trans.pro_set_, rnd, zipf, FLAGS_tuple_num, FLAGS_max_ope, FLAGS_thread_num,
                   FLAGS_rratio, FLAGS_rmw, FLAGS_ycsb, false, thid, myres);
 RETRY:
@@ -215,11 +214,13 @@ int main(int argc, char *argv[]) try {
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
   waitForReady(readys);
+  system("ipmctl show -dimm -performance");
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
   }
   storeRelease(quit, true);
+  system("ipmctl show -dimm -performance");
   for (auto &th : thv) th.join();
 
   for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
@@ -232,6 +233,7 @@ int main(int argc, char *argv[]) try {
   getrusage(RUSAGE_SELF, &ru);
   printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
   printf("DAX USED: %f MB\n", dax_used / 1024.0 / 1024.0);
+  printf("Masstree prefetch count %d\n", MASSTREE_PREFETCH_COUNT);
 
   return 0;
 } catch (bad_alloc) {
