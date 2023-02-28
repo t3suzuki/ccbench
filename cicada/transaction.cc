@@ -463,6 +463,7 @@ void TxExecutor::twrite_skip_index(Tuple *_tuple, const uint64_t key) {
 
   Version *new_ver;
   new_ver = newVersionGeneration(tuple);
+  ::prefetch(new_ver);
   write_set_.emplace_back(key, tuple, later_ver, new_ver, rmw);
 #endif  // if SINGLE_EXEC
 
@@ -859,6 +860,105 @@ void TxExecutor::mainte() {
   cres_->local_gc_latency_ += rdtscp() - start;
 #endif
 }
+
+
+PTX_PROMISE(void) TxExecutor::ptx_mainte() {
+  /*Maintenance
+   * Schedule garbage collection
+   * Declare quiescent state
+   * Collect garbage created by prior transactions
+   * バージョンリストにおいてMinRtsよりも古いバージョンの中でコミット済み最新のもの
+   * 以外のバージョンは全てデリート可能。絶対に到達されないことが保証される.
+   */
+#if ADD_ANALYSIS
+  uint64_t start;
+  start = rdtscp();
+#endif
+  //-----
+  if (__atomic_load_n(&(GCExecuteFlag[thid_].obj_), __ATOMIC_ACQUIRE) == 1) {
+#if ADD_ANALYSIS
+    ++cres_->local_gc_counts_;
+#endif
+    while (!gcq_.empty()) {
+      if (gcq_.front().wts_ >= MinRts.load(memory_order_acquire)) break;
+
+      ::prefetch(gcq_.front().rcdptr_);
+      PTX_SUSPEND;
+      /*
+       * (a) acquiring the garbage collection lock succeeds
+       * thid_+1 : leader thread id is 0.
+       * so, if we get right by id 0, other worker thread can't detect.
+       */
+      if (gcq_.front().rcdptr_->getGCRight(thid_ + 1) == false) {
+        // fail acquiring the lock
+        gcq_.pop_front();
+        continue;
+      }
+
+      Tuple *tuple = gcq_.front().rcdptr_;
+      // (b) v.wts > record.min_wts
+      if (gcq_.front().wts_ <= tuple->min_wts_) {
+        // releases the lock
+        tuple->returnGCRight();
+        gcq_.pop_front();
+        continue;
+      }
+      // this pointer may be dangling.
+
+      Version *delTarget =
+              gcq_.front().ver_->next_.load(std::memory_order_acquire);
+
+      // the thread detaches the rest of the version list from v
+      gcq_.front().ver_->next_.store(nullptr, std::memory_order_release);
+      // updates record.min_wts
+      tuple->min_wts_.store(gcq_.front().ver_->wts_, memory_order_release);
+
+      while (delTarget != nullptr) {
+	::prefetch(delTarget);
+	PTX_SUSPEND;
+	// escape next pointer
+	Version *tmp = delTarget->next_.load(std::memory_order_acquire);
+	
+#if INLINE_VERSION_OPT
+	if (delTarget == &(tuple->inline_ver_)) {
+	  tuple->returnInlineVersionRight();
+	  goto gcAfterThisVersion_NEXT_LOOP;
+	}
+#endif  // if INLINE_VERSION_OPT
+	
+#if REUSE_VERSION
+	reuse_version_from_gc_.emplace_back(delTarget);
+#else   // if REUSE_VERSION
+#if DEFAULT_NEW
+	delete delTarget;
+#endif
+#endif  // if REUSE_VERSION
+	
+	[[maybe_unused]] gcAfterThisVersion_NEXT_LOOP :
+	  delTarget = tmp;
+      }
+
+      // releases the lock
+      tuple->returnGCRight();
+      gcq_.pop_front();
+    }
+
+    __atomic_store_n(&(GCExecuteFlag[thid_].obj_), 0, __ATOMIC_RELEASE);
+  }
+
+  this->gcstop_ = rdtscp();
+  if (chkClkSpan(this->gcstart_, this->gcstop_, FLAGS_gc_inter_us * FLAGS_clocks_per_us) &&
+      (loadAcquire(GCFlag[thid_].obj_) == 0)) {
+    storeRelease(GCFlag[thid_].obj_, 1);
+    this->gcstart_ = this->gcstop_;
+  }
+  //-----
+#if ADD_ANALYSIS
+  cres_->local_gc_latency_ += rdtscp() - start;
+#endif
+  PTX_RETURN;
+}
+
 
 void TxExecutor::writePhase() {
 #if ADD_ANALYSIS

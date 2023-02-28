@@ -228,7 +228,10 @@ void partTableDelete([[maybe_unused]] size_t thid, uint64_t start,
 #endif
             Version* del = ver;
             ver = ver->next_.load(memory_order_acquire);
+#if DEFAULT_NEW
             delete del;
+#else
+#endif
         }
     }
 }

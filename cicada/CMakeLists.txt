@@ -32,6 +32,7 @@ file(GLOB CICADA_SOURCES
         )
 
 add_executable(cicada_original ${CICADA_SOURCES})
+#set_target_properties(cicada_original PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1")
 
 set(CICADA_LIBS
   numa
@@ -137,6 +138,7 @@ if (DEFINED CORO)
       PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
       )
     set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
+    #set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1 -DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
     #set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_${N_CORO}coro ${CICADA_LIBS})
   endforeach()
@@ -157,6 +159,7 @@ if (DEFINED DAX)
       PRIVATE ${PROJECT_SOURCE_DIR}/../include
       PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
       )
+    #set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1 -DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
     set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_dax_${N_CORO}coro ${CICADA_LIBS})
   endforeach()

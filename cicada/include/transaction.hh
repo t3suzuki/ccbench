@@ -20,6 +20,8 @@
 #include "tuple.hh"
 #include "version.hh"
 
+void *dax_malloc(size_t sz);
+
 #define CONTINUING_COMMIT_THRESHOLD 5
 
 enum class TransactionStatus : uint8_t {
@@ -71,8 +73,19 @@ public:
     pro_set_.reserve(FLAGS_max_ope);
 
     if (FLAGS_pre_reserve_version) {
-      for (size_t i = 0; i < FLAGS_pre_reserve_version; ++i)
-        reuse_version_from_gc_.emplace_back(new Version());
+      for (size_t i = 0; i < FLAGS_pre_reserve_version; ++i) {
+#if DEFAULT_NEW
+	Version *new_version = new Version();
+#else
+#if DAX
+	Version* new_version = (Version*)dax_malloc(sizeof(Version));
+#else // DAX
+	Version* new_version = (Version*)malloc(sizeof(Version));
+#endif // DAX
+	new (new_version) Version();
+#endif
+        reuse_version_from_gc_.emplace_back(new_version);
+      }
     }
 
     genStringRepeatedNumber(write_val_, VAL_SIZE, thid_);
@@ -84,7 +97,11 @@ public:
   ~TxExecutor() {
     for (auto itr = reuse_version_from_gc_.begin();
          itr != reuse_version_from_gc_.end(); ++itr) {
+#if DEFAULT_NEW
       if ((*itr)->status_ == VersionStatus::unused) delete (*itr);
+#else
+      // TODO: free
+#endif
     }
     reuse_version_from_gc_.clear();
     read_set_.clear();
@@ -103,6 +120,7 @@ public:
   void earlyAbort();
 
   void mainte();  // maintenance
+  PTX_PROMISE(void) ptx_mainte();  // maintenance
   void gcpv();    // group commit pending versions
   void precpv();  // pre-commit pending versions
   void pwal();    // parallel write ahead log.
@@ -147,7 +165,9 @@ public:
 #if REUSE_VERSION
       reuse_version_from_gc_.emplace_back(delTarget);
 #else   // if REUSE_VERSION
+#if DEFAULT_NEW
       delete delTarget;
+#endif
 #endif  // if REUSE_VERSION
 
 [[maybe_unused]] gcAfterThisVersion_NEXT_LOOP :
@@ -157,7 +177,7 @@ public:
       delTarget = tmp;
     }
   }
-
+  
 #if INLINE_VERSION_OPT
 #if INLINE_VERSION_PROMOTION
   void inlineVersionPromotion(const uint64_t key, Tuple* tuple,
@@ -202,7 +222,18 @@ public:
 #if ADD_ANALYSIS
     ++cres_->local_version_malloc_;
 #endif
+
+#if DEFAULT_NEW
     return new Version(0, this->wts_.ts_);
+#else
+#if DAX
+    Version* new_version = (Version*)dax_malloc(sizeof(Version));
+#else // DAX
+    Version* new_version = (Version*)malloc(sizeof(Version));
+#endif // DAX
+    new (new_version) Version(0, this->wts_.ts_);
+    return new_version;
+#endif
   }
 
   bool precheckInValidation() {
@@ -317,7 +348,9 @@ public:
                                        std::memory_order_release);
         reuse_version_from_gc_.emplace_back((*itr).new_ver_);
 #else
+#if DEFAULT_NEW
         delete (*itr).new_ver_;
+#endif
 #endif
       }
     }

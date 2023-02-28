@@ -24,7 +24,7 @@ PTX_PROMISE(void) ptx_work(size_t thid, int i_coro, FastZipf &zipf,
 			   int &n_done, bool &done_coro
  )
 {
-    TxExecutor trans(thid, (Result*) &CicadaResult[thid]);
+  TxExecutor trans(thid, (Result*) &CicadaResult[thid]);
     while (!loadAcquire(quit)) {
         /* シングル実行で絶対に競合を起こさないワークロードにおいて，
          * 自トランザクションで read した後に write するのは複雑になる．
@@ -98,7 +98,8 @@ RETRY:
                 trans.earlyAbort();
 #if SINGLE_EXEC
 #else
-                trans.mainte();
+                //trans.mainte();
+		PTX_AWAIT trans.ptx_mainte();
 #endif
                 goto RETRY;
             }
@@ -136,7 +137,8 @@ RETRY:
                 /**
                  * Maintenance phase
                  */
-                trans.mainte();
+                //trans.mainte();
+		PTX_AWAIT trans.ptx_mainte();
 #endif
                 goto RETRY;
             }
@@ -157,7 +159,8 @@ RETRY:
              */
 #if SINGLE_EXEC
 #else
-            trans.mainte();
+            //trans.mainte();
+	    PTX_AWAIT trans.ptx_mainte();
 #endif
         }
     }
@@ -379,6 +382,12 @@ int main(int argc, char* argv[]) try {
   printf("Skipping index enabled.\n");
 #endif
 
+#if DEFAULT_NEW
+  printf("Using default new constructor for Version.\n");
+#else
+  printf("Using replacement new constructor for Version.\n");
+#endif
+
     MinWts.store(initial_wts + 2, memory_order_release);
 
     alignas(CACHE_LINE_SIZE) bool start = false;
@@ -393,11 +402,13 @@ int main(int argc, char* argv[]) try {
     //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
     
     waitForReady(readys);
+    system("ipmctl show -dimm -performance");
     storeRelease(start, true);
     for (size_t i = 0; i < FLAGS_extime; ++i) {
         sleepMs(1000);
     }
     storeRelease(quit, true);
+    system("ipmctl show -dimm -performance");
     for (auto &th : thv) th.join();
 
     for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
@@ -411,7 +422,8 @@ int main(int argc, char* argv[]) try {
     getrusage(RUSAGE_SELF, &ru);
     printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
     printf("DAX USED: %f MB\n", dax_used / 1024.0 / 1024.0);
-
+    printf("Masstree prefetch count %d\n", MASSTREE_PREFETCH_COUNT);
+  
     return 0;
 } catch (std::bad_alloc&) {
     ERR;
