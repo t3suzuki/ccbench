@@ -18,6 +18,7 @@
 #include "tpcc_txn.hpp"
 #include "clock.h"
 #include "../include/coro.h"
+#include "../include/dax.h"
 
 using namespace std;
 
@@ -70,8 +71,8 @@ PROMISE(void) corobase_work(const bool &quit, const uint16_t w_id, std::uint64_t
   done_coro = true;
   RETURN;
 }
-#elif PILO
-PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg, int i_coro, int &n_done, bool &done_coro)
+#elif PTX
+PTX_PROMISE(void) ptx_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, Token &token, TPCC::HistoryKeyGenerator &hkg, int i_coro, int &n_done, bool &done_coro)
 {
   TPCC::Query query;
   TPCC::query::Option query_opt;
@@ -90,19 +91,19 @@ PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_
     switch (query.type) {
       case TPCC::Q_NEW_ORDER :
 #if MYRW
-        PILO_AWAIT TPCC::run_new_order_pilo(&query.new_order, &myrw);
+        PTX_AWAIT TPCC::run_new_order_ptx(&query.new_order, &myrw);
         validation = TPCC::run_new_order(&query.new_order, token, &myrw);
 #else
-        PILO_AWAIT TPCC::run_new_order_pilo(&query.new_order);
+        PTX_AWAIT TPCC::run_new_order_ptx(&query.new_order);
         validation = TPCC::run_new_order(&query.new_order, token);
 #endif
         break;
       case TPCC::Q_PAYMENT :
 #if MYRW
-        PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg, &myrw);
+        PTX_AWAIT TPCC::run_payment_ptx(&query.payment, &hkg, &myrw);
         validation = TPCC::run_payment(&query.payment, &hkg, token, &myrw);
 #else
-        PILO_AWAIT TPCC::run_payment_pilo(&query.payment, &hkg);
+        PTX_AWAIT TPCC::run_payment_ptx(&query.payment, &hkg);
         validation = TPCC::run_payment(&query.payment, &hkg, token);
 #endif
         break;
@@ -129,7 +130,7 @@ PILO_PROMISE(void) pilo_work(const bool &quit, const uint16_t w_id, std::uint64_
   }
   n_done++;
   done_coro = true;
-  PILO_RETURN;
+  PTX_RETURN;
 }
 #else
 void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt_cnt, std::uint64_t &lcl_abt_cnt, TPCC::HistoryKeyGenerator &hkg)
@@ -215,7 +216,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
   storeRelease(ready, 1);
   while (!loadAcquire(start)) _mm_pause();
 
-#if defined(COROBASE) || defined(PILO)
+#if defined(COROBASE) || defined(PTX)
   int n_done = 0;
   bool done[N_CORO];
   Token token[N_CORO];
@@ -223,7 +224,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 #if COROBASE
   PROMISE(void) coro[N_CORO];
 #else
-  PILO_PROMISE(void) coro[N_CORO];
+  PTX_PROMISE(void) coro[N_CORO];
 #endif
   for (int i_coro=0; i_coro<N_CORO; i_coro++) {
     done[i_coro] = false;
@@ -232,7 +233,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
     coro[i_coro] = corobase_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
 				 i_coro, n_done, done[i_coro]);
 #else
-    coro[i_coro] = pilo_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
+    coro[i_coro] = ptx_work(quit, w_id, lcl_cmt_cnt, lcl_abt_cnt, token[i_coro], hkg,
 			     i_coro, n_done, done[i_coro]);
 #endif
     coro[i_coro].start();
@@ -300,8 +301,8 @@ int main(int argc, char *argv[]) try {
 
 #if COROBASE
   printf("use CoroBase. N_CORO=%d\n", N_CORO);
-#elif PILO
-  printf("use PILO N_CORO=%d\n", N_CORO);
+#elif PTX
+  printf("use PTX N_CORO=%d\n", N_CORO);
 #else
   printf("use original.\n");
 #endif

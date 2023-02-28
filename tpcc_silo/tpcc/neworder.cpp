@@ -59,20 +59,20 @@ bool get_warehouse_pref(Token& token, uint16_t w_id, const TPCC::Warehouse*& war
   return true;
 }
 
-PILO_PROMISE(bool) get_warehouse_pilo(uint16_t w_id, const TPCC::Warehouse*& ware, MyRW *myrw = nullptr)
+PTX_PROMISE(bool) get_warehouse_ptx(uint16_t w_id, const TPCC::Warehouse*& ware, MyRW *myrw = nullptr)
 {
   SimpleKey<8> w_key;
   TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
   Record *rec = nullptr;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::WAREHOUSE, w_key.view(), &rec);
+  Status stat = PTX_AWAIT search_key_ptx(Storage::WAREHOUSE, w_key.view(), &rec);
 #if MYRW
   myrw->rd(Storage::WAREHOUSE, w_key.view(), rec);
 #endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
   ware = &rec->get_tuple().get_value().cast_to<TPCC::Warehouse>();
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
   
 bool get_customer(
@@ -107,22 +107,22 @@ bool get_customer_myrw(
   return true;
 }
   
-PILO_PROMISE(bool) get_customer_pilo(
+PTX_PROMISE(bool) get_customer_ptx(
   uint32_t c_id, uint8_t d_id, uint16_t w_id,
   const TPCC::Customer*& cust, MyRW *myrw = nullptr)
 {
   SimpleKey<8> c_key;
   TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
   Record *rec = nullptr;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::CUSTOMER, c_key.view(), &rec);
+  Status stat = PTX_AWAIT search_key_ptx(Storage::CUSTOMER, c_key.view(), &rec);
 #if MYRW
   myrw->rd(Storage::CUSTOMER, c_key.view(), rec);
 #endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
   cust = &rec->get_tuple().get_value().cast_to<TPCC::Customer>();
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
   
 PROMISE(bool) get_customer_coro(
@@ -206,7 +206,7 @@ bool get_and_update_district_myrw(
   return true;
 }
   
-PILO_PROMISE(bool) get_and_update_district_pilo(
+PTX_PROMISE(bool) get_and_update_district_ptx(
 						pobjs_t &pobjs,
     uint8_t d_id, uint16_t w_id,
 						const TPCC::District*& dist, MyRW *myrw = nullptr)
@@ -214,12 +214,12 @@ PILO_PROMISE(bool) get_and_update_district_pilo(
   SimpleKey<8> d_key;
   TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
   Record *rec = nullptr;
-  Status stat = PILO_AWAIT search_key_pilo(Storage::DISTRICT, d_key.view(), &rec);
+  Status stat = PTX_AWAIT search_key_ptx(Storage::DISTRICT, d_key.view(), &rec);
 #if MYRW
   myrw->rd(Storage::DISTRICT, d_key.view(), rec);
 #endif
   if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
   HeapObject d_obj;
   d_obj.allocate<TPCC::District>();
@@ -229,7 +229,7 @@ PILO_PROMISE(bool) get_and_update_district_pilo(
   new_dist.D_NEXT_O_ID++;
   dist = &new_dist;
   pobjs.emplace_back(std::move(d_obj));
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
   
@@ -293,7 +293,7 @@ bool insert_order(
   return true;
 }
 
-PILO_PROMISE(bool) insert_order_pilo(
+PTX_PROMISE(bool) insert_order_ptx(
 				     pobjs_t &pobjs,
   uint32_t o_id, uint8_t d_id, uint16_t w_id, uint32_t c_id,
   uint8_t ol_cnt, bool remote,
@@ -311,13 +311,13 @@ PILO_PROMISE(bool) insert_order_pilo(
   new_ord.O_ALL_LOCAL = (remote ? 0 : 1);
   SimpleKey<8> o_key;
   TPCC::Order::CreateKey(new_ord.O_W_ID, new_ord.O_D_ID, new_ord.O_ID, o_key.ptr());
-  Status sta = PILO_AWAIT insert_pilo(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
+  Status sta = PTX_AWAIT insert_ptx(Storage::ORDER, Tuple(o_key.view(), std::move(o_obj)));
   pobjs.emplace_back(std::move(o_obj));
   if (sta == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
   ord = &new_ord;
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
 PROMISE(bool) insert_order_coro(
@@ -390,7 +390,7 @@ bool insert_neworder_pref(uint32_t o_id, uint8_t d_id, uint16_t w_id)
   return true;
 }
 
-PILO_PROMISE(bool) insert_neworder_pilo(pobjs_t &pobjs, uint32_t o_id, uint8_t d_id, uint16_t w_id)
+PTX_PROMISE(bool) insert_neworder_ptx(pobjs_t &pobjs, uint32_t o_id, uint8_t d_id, uint16_t w_id)
 {
   HeapObject no_obj;
   no_obj.allocate<TPCC::NewOrder>();
@@ -400,12 +400,12 @@ PILO_PROMISE(bool) insert_neworder_pilo(pobjs_t &pobjs, uint32_t o_id, uint8_t d
   new_no.NO_W_ID = w_id;
   SimpleKey<8> no_key;
   TPCC::NewOrder::CreateKey(new_no.NO_W_ID, new_no.NO_D_ID, new_no.NO_O_ID, no_key.ptr());
-  Status sta = PILO_AWAIT insert_pilo(Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
+  Status sta = PTX_AWAIT insert_ptx(Storage::NEWORDER, Tuple(no_key.view(), std::move(no_obj)));
   pobjs.emplace_back(std::move(no_obj));
   if (sta == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
 PROMISE(bool) insert_neworder_coro(Token& token, uint32_t o_id, uint8_t d_id, uint16_t w_id)
@@ -476,20 +476,20 @@ bool get_item_pref(uint32_t ol_i_id, const TPCC::Item*& item)
   return true;
 }
 
-PILO_PROMISE(bool) get_item_pilo(uint32_t ol_i_id, const TPCC::Item*& item, MyRW *myrw = nullptr)
+PTX_PROMISE(bool) get_item_ptx(uint32_t ol_i_id, const TPCC::Item*& item, MyRW *myrw = nullptr)
 {
   SimpleKey<8> i_key;
   TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
   Record *rec = nullptr;
-  Status sta = PILO_AWAIT search_key_pilo(Storage::ITEM, i_key.view(), &rec);
+  Status sta = PTX_AWAIT search_key_ptx(Storage::ITEM, i_key.view(), &rec);
 #if MYRW
   myrw->rd(Storage::ITEM, i_key.view(), rec);
 #endif
   if (sta == Status::WARN_CONCURRENT_DELETE || sta == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
   item = &rec->get_tuple().get_value().cast_to<TPCC::Item>();
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
 PROMISE(bool) get_item_coro(Token& token, uint32_t ol_i_id, const TPCC::Item*& item)
@@ -632,7 +632,7 @@ bool get_and_update_stock_pref(
     return true;
 }
 
-PILO_PROMISE(bool) get_and_update_stock_pilo(
+PTX_PROMISE(bool) get_and_update_stock_ptx(
 					     pobjs_t &pobjs,
   uint16_t ol_supply_w_id, uint32_t ol_i_id, uint8_t ol_quantity, bool remote,
 					     const TPCC::Stock*& sto, MyRW *myrw = nullptr)
@@ -640,12 +640,12 @@ PILO_PROMISE(bool) get_and_update_stock_pilo(
     SimpleKey<8> s_key;
     TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
     Record *rec = nullptr;
-    Status stat = PILO_AWAIT search_key_pilo(Storage::STOCK, s_key.view(), &rec);
+    Status stat = PTX_AWAIT search_key_ptx(Storage::STOCK, s_key.view(), &rec);
 #if MYRW
     myrw->rd(Storage::STOCK, s_key.view(), rec);
 #endif
     if (stat == Status::WARN_CONCURRENT_DELETE || stat == Status::WARN_NOT_FOUND) {
-      PILO_RETURN false;
+      PTX_RETURN false;
     }
     const TPCC::Stock& old_sto = rec->get_tuple().get_value().cast_to<TPCC::Stock>();
 
@@ -666,7 +666,7 @@ PILO_PROMISE(bool) get_and_update_stock_pilo(
     new_sto.S_QUANTITY = quantity;
     sto = &new_sto;
     pobjs.emplace_back(std::move(s_obj));
-    PILO_RETURN true;
+    PTX_RETURN true;
 }
 
 
@@ -806,7 +806,7 @@ bool insert_orderline_pref(
   return true;
 }
 
-PILO_PROMISE(bool) insert_orderline_pilo(
+PTX_PROMISE(bool) insert_orderline_ptx(
 					 pobjs_t &pobjs,
   uint32_t o_id, uint8_t d_id, uint16_t w_id,
   uint8_t ol_num, uint32_t ol_i_id, uint16_t ol_supply_w_id,
@@ -843,12 +843,12 @@ PILO_PROMISE(bool) insert_orderline_pilo(
   SimpleKey<8> ol_key;
   TPCC::OrderLine::CreateKey(new_ol.OL_W_ID, new_ol.OL_D_ID, new_ol.OL_O_ID,
                              new_ol.OL_NUMBER, ol_key.ptr());
-  Status sta = PILO_AWAIT insert_pilo(Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
+  Status sta = PTX_AWAIT insert_ptx(Storage::ORDERLINE, Tuple(ol_key.view(), std::move(ol_obj)));
   pobjs.emplace_back(std::move(ol_obj));
   if (sta == Status::WARN_NOT_FOUND) {
-    PILO_RETURN false;
+    PTX_RETURN false;
   }
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
 PROMISE(bool) insert_orderline_coro(
@@ -1004,7 +1004,7 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *my
   RETURN my_abort(token);
 }
 
-PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query, MyRW *myrw = nullptr)
+PTX_PROMISE(bool) run_new_order_ptx(TPCC::query::NewOrder *query, MyRW *myrw = nullptr)
 {
   bool remote = query->remote;
   uint16_t w_id = query->w_id;
@@ -1015,21 +1015,21 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query, MyRW *myrw =
   pobjs_t pobjs;
 
   const TPCC::Warehouse *ware_pref;
-  auto ret_warehouse = PILO_AWAIT get_warehouse_pilo(w_id, ware_pref, myrw);
-  if (!ret_warehouse) PILO_RETURN ret_false_pilo(pobjs);
+  auto ret_warehouse = PTX_AWAIT get_warehouse_ptx(w_id, ware_pref, myrw);
+  if (!ret_warehouse) PTX_RETURN ret_false_ptx(pobjs);
   const TPCC::Customer *cust_pref;
-  auto ret_customer = PILO_AWAIT get_customer_pilo(c_id, d_id, w_id, cust_pref, myrw);
-  if (!ret_customer) PILO_RETURN ret_false_pilo(pobjs);
+  auto ret_customer = PTX_AWAIT get_customer_ptx(c_id, d_id, w_id, cust_pref, myrw);
+  if (!ret_customer) PTX_RETURN ret_false_ptx(pobjs);
   const TPCC::District *dist_pref;
-  auto ret_district = PILO_AWAIT get_and_update_district_pilo(pobjs, d_id, w_id, dist_pref, myrw);
-  if (!ret_district) PILO_RETURN ret_false_pilo(pobjs);
+  auto ret_district = PTX_AWAIT get_and_update_district_ptx(pobjs, d_id, w_id, dist_pref, myrw);
+  if (!ret_district) PTX_RETURN ret_false_ptx(pobjs);
   uint32_t o_id_pref = dist_pref->D_NEXT_O_ID;
   [[maybe_unused]] const TPCC::Order *ord_pref;
   if (FLAGS_insert_exe) {
-    auto ret_order = PILO_AWAIT insert_order_pilo(pobjs, o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref);
-    if (!ret_order) PILO_RETURN ret_false_pilo(pobjs);
-    auto ret_neworder = PILO_AWAIT insert_neworder_pilo(pobjs, o_id_pref, d_id, w_id);
-    if (!ret_neworder) PILO_RETURN ret_false_pilo(pobjs);
+    auto ret_order = PTX_AWAIT insert_order_ptx(pobjs, o_id_pref, d_id, w_id, c_id, ol_cnt, remote, ord_pref);
+    if (!ret_order) PTX_RETURN ret_false_ptx(pobjs);
+    auto ret_neworder = PTX_AWAIT insert_neworder_ptx(pobjs, o_id_pref, d_id, w_id);
+    if (!ret_neworder) PTX_RETURN ret_false_ptx(pobjs);
   }
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
     uint32_t ol_i_id = query->items[ol_num].ol_i_id;
@@ -1037,12 +1037,12 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query, MyRW *myrw =
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
 
     const TPCC::Item *item;
-    auto ret_item = PILO_AWAIT get_item_pilo(ol_i_id, item, myrw);
-    if (!ret_item) PILO_RETURN ret_false_pilo(pobjs);
+    auto ret_item = PTX_AWAIT get_item_ptx(ol_i_id, item, myrw);
+    if (!ret_item) PTX_RETURN ret_false_ptx(pobjs);
 
     const TPCC::Stock *sto;
-    auto ret_stock = PILO_AWAIT get_and_update_stock_pilo(pobjs, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw);
-    if (!ret_stock) PILO_RETURN ret_false_pilo(pobjs);
+    auto ret_stock = PTX_AWAIT get_and_update_stock_ptx(pobjs, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw);
+    if (!ret_stock) PTX_RETURN ret_false_ptx(pobjs);
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
@@ -1050,15 +1050,15 @@ PILO_PROMISE(bool) run_new_order_pilo(TPCC::query::NewOrder *query, MyRW *myrw =
       double d_tax = dist_pref->D_TAX;
       double c_discount = cust_pref->C_DISCOUNT;
       double ol_amount = ol_quantity * i_price * (1.0 + w_tax + d_tax) * (1.0 - c_discount);
-      auto ret_orderline = PILO_AWAIT insert_orderline_pilo(pobjs,
+      auto ret_orderline = PTX_AWAIT insert_orderline_ptx(pobjs,
 							    o_id_pref, d_id, w_id, ol_num, ol_i_id,
 							    ol_supply_w_id, ol_quantity, ol_amount, sto);
-      if (!ret_orderline) PILO_RETURN ret_false_pilo(pobjs);
+      if (!ret_orderline) PTX_RETURN ret_false_ptx(pobjs);
     }
   } // end of ol loop
 
   free_pobjs(pobjs);
-  PILO_RETURN true;
+  PTX_RETURN true;
 }
 
 } // namespace TPCC

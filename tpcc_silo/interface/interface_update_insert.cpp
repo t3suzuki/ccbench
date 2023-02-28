@@ -130,14 +130,14 @@ Status insert_pref(Storage st, Tuple&& tuple)
   return Status::OK;
 }
 
-PILO_PROMISE(Status) insert_pilo(Storage st, Tuple&& tuple)
+PTX_PROMISE(Status) insert_ptx(Storage st, Tuple&& tuple)
 {
   masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
-  auto r = PILO_AWAIT kohler_masstree::find_record_pilo(st, tuple.get_key());
+  auto r = PTX_AWAIT kohler_masstree::find_record_ptx(st, tuple.get_key());
   if (r != nullptr) {
-    PILO_RETURN Status::WARN_ALREADY_EXISTS;
+    PTX_RETURN Status::WARN_ALREADY_EXISTS;
   }
-  PILO_RETURN Status::OK;
+  PTX_RETURN Status::OK;
 }
   
 PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out)

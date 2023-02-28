@@ -156,7 +156,7 @@ free_pobjs(pobjs_t &pobjs)
 }
 
 inline bool
-ret_false_pilo(pobjs_t &pobjs)
+ret_false_ptx(pobjs_t &pobjs)
 {
   free_pobjs(pobjs);
   return false;

@@ -261,13 +261,13 @@ public:
     RETURN nullptr;
   }
   
-  inline PILO_PROMISE(T *) get_value_pilo(const char *key, std::size_t len_key) {  // NOLINT
+  inline PTX_PROMISE(T *) get_value_ptx(const char *key, std::size_t len_key) {  // NOLINT
     unlocked_cursor_type lp(table_, key, len_key);
-    bool found = PILO_AWAIT lp.find_unlocked_pilo(*ti);
+    bool found = PTX_AWAIT lp.find_unlocked_ptx(*ti);
     if (found) {
-      PILO_RETURN lp.value();
+      PTX_RETURN lp.value();
     }
-    PILO_RETURN nullptr;
+    PTX_RETURN nullptr;
   }
 
   inline PROMISE(T *) get_value_coro(std::string_view key) {
@@ -275,9 +275,9 @@ public:
     RETURN v;
   }
 
-  inline PILO_PROMISE(T *) get_value_pilo(std::string_view key) {
-    auto v = PILO_AWAIT get_value_pilo(key.data(), key.size());
-    PILO_RETURN v;
+  inline PTX_PROMISE(T *) get_value_ptx(std::string_view key) {
+    auto v = PTX_AWAIT get_value_ptx(key.data(), key.size());
+    PTX_RETURN v;
   }
 
   T *get_value(std::string_view key) {
@@ -331,7 +331,7 @@ public:
    */
   static void *find_record(Storage st, std::string_view key);
   static PROMISE(void *) find_record_coro(Storage st, std::string_view key);
-  static PILO_PROMISE(void *) find_record_pilo(Storage st, std::string_view key);
+  static PTX_PROMISE(void *) find_record_ptx(Storage st, std::string_view key);
 
   static masstree_wrapper<Record> &get_mtdb(Storage st) {
     return MTDB.at(static_cast<std::uint32_t>(st));

@@ -163,7 +163,7 @@ Status insert(Token token, Storage st, std::string_view key, std::string_view va
 Status insert(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
 Status insert_pref(Storage st, Tuple&& tuple);
 PROMISE(Status) insert_coro(Token token, Storage st, Tuple&& tuple, Tuple** tuple_out = nullptr);
-PILO_PROMISE(Status) insert_pilo(Storage st, Tuple&& tuple);
+PTX_PROMISE(Status) insert_ptx(Storage st, Tuple&& tuple);
 
 /**
  * @brief leave session
@@ -295,9 +295,9 @@ Status search_key(Token token, Storage storage,  // NOLINT
 Status search_key_pref(Storage storage,  // NOLINT
                          std::string_view key, Tuple **tuple);
 
-  PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+  PTX_PROMISE(Status) search_key_ptx(Storage storage,  // NOLINT
                          std::string_view key, Tuple **tuple);
-  PILO_PROMISE(Status) search_key_pilo(Storage storage,  // NOLINT
+  PTX_PROMISE(Status) search_key_ptx(Storage storage,  // NOLINT
                          std::string_view key, Record **rec);
   Status search_key_myrw(Token token, Storage storage,  // NOLINT
 			 std::string_view key, Tuple **tuple, MyRW *myrw);

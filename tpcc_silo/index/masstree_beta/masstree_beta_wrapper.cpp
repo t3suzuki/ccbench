@@ -42,12 +42,12 @@ kohler_masstree::find_record_coro(Storage st, std::string_view key) {
   RETURN ret;
 }
 
-PILO_PROMISE(void *)
-kohler_masstree::find_record_pilo(Storage st, std::string_view key) {
+PTX_PROMISE(void *)
+kohler_masstree::find_record_ptx(Storage st, std::string_view key) {
   masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
   auto mt = get_mtdb(st);
-  auto ret = PILO_AWAIT mt.get_value_pilo(key.data(), key.size());
-  PILO_RETURN ret;
+  auto ret = PTX_AWAIT mt.get_value_ptx(key.data(), key.size());
+  PTX_RETURN ret;
 }
   
 }  // namespace shirakami
