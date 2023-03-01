@@ -5,6 +5,10 @@
 #include <new>
 #include <type_traits>
 
+void * dax_malloc(size_t sz);
+void dax_free(char *p);
+void * dax_malloc_align(size_t sz, std::align_val_t align);
+
 namespace ccbench {
 
 /**
@@ -80,7 +84,11 @@ public:
 
   void allocate(size_t size, std::align_val_t align = std::align_val_t(sizeof(uint8_t))) {
     reset();
+#if DAX
+    data_ = dax_malloc(size);
+#else
     data_ = ::operator new(size, align);
+#endif
     size_ = size;
     align_ = align;
     owner_ = true;
@@ -122,7 +130,11 @@ public:
   void reset() noexcept {
     if (owner_) {
       assert(data_!= nullptr); assert(size_ > 0); assert(static_cast<std::size_t>(align_) > 0);
+#if DAX
+      dax_free((char *)data_);
+#else
       ::operator delete(data_, size_, align_);
+#endif
     }
     data_ = nullptr;
     size_ = 0;

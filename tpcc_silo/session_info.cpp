@@ -8,6 +8,8 @@
 #include "garbage_collection.h"
 #include "index/masstree_beta/include/masstree_beta_wrapper.h"
 
+void dax_free(char *p);
+
 namespace ccbench {
 
 void session_info::clean_up_ops_set() {
@@ -92,7 +94,11 @@ void session_info::gc_records_and_values() const {
     while (!q.empty()) {
       Record* rec = q.front();
       if (rec->get_tidw().get_epoch() > r_epoch) break;
+#if DAX
+      dax_free((char*)rec);
+#else
       delete rec;
+#endif
       q.pop_front();
     }
   }
