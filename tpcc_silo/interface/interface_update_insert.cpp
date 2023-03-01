@@ -43,7 +43,7 @@ Status insert_detail(
   }
 
 #if DAX
-  Record* rec = (Record*)malloc(sizeof(Record));
+  Record* rec = (Record*)dax_malloc(sizeof(Record));
   new (rec) Record(tuple_func());
 #else
   Record *rec = new Record(tuple_func());
@@ -81,7 +81,7 @@ PROMISE(Status) insert_detail_coro(
   }
 
 #if DAX
-  Record* rec = (Record*)malloc(sizeof(Record));
+  Record* rec = (Record*)dax_malloc(sizeof(Record));
   new (rec) Record(tuple_func());
 #else
   Record *rec = new Record(tuple_func());
@@ -294,7 +294,7 @@ Status upsert_detail(Token token, Storage st, KeyFunc&& key_func, TupleFunc&& tu
   Record *rec_ptr{static_cast<Record *>(kohler_masstree::kohler_masstree::find_record(st, key_func()))};
   if (rec_ptr == nullptr) {
 #if DAX
-    rec_ptr = (Record*)malloc(sizeof(Record));
+    rec_ptr = (Record*)dax_malloc(sizeof(Record));
     new (rec_ptr) Record(tuple_func());
 #else
     rec_ptr = new Record(tuple_func());

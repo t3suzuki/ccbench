@@ -700,6 +700,34 @@ PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token
 }
 
 
+
+PTX_PROMISE(void) run_payment_ptx2(query::Payment *query)
+{
+  uint16_t w_id = query->w_id;
+  uint16_t c_w_id = query->c_w_id;
+  uint8_t d_id = query->d_id;
+  uint32_t c_id = query->c_id;
+  uint8_t c_d_id = query->c_d_id;
+  double h_amount = query->h_amount;
+
+  Record *w_ptr;
+  if (1) {
+    SimpleKey<8> w_key;
+    TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+    PTX_AWAIT kohler_masstree::get_mtdb(Storage::WAREHOUSE).get_value_ptx_flat(w_key.view());
+  }
+
+  if (1) {
+    SimpleKey<8> d_key;
+    TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
+    PTX_AWAIT kohler_masstree::get_mtdb(Storage::DISTRICT).get_value_ptx_flat(d_key.view());
+  }
+
+  
+  PTX_RETURN;
+}
+
+
 PTX_PROMISE(bool) run_payment_ptx(query::Payment *query, HistoryKeyGenerator *hkg, MyRW *myrw = nullptr)
 {
   uint16_t w_id = query->w_id;

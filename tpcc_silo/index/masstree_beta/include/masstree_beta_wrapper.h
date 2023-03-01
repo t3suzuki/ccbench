@@ -109,7 +109,7 @@ public:
   [[maybe_unused]] static constexpr uint64_t insert_bound =
           UINT64_MAX;  // 0xffffff;
   // static constexpr uint64_t insert_bound = 0xffffff; //0xffffff;
-  struct table_params : public Masstree::nodeparams<15, 15> {  // NOLINT
+  struct table_params : public Masstree::nodeparams<MASSTREE_FANOUT, MASSTREE_FANOUT> {  // NOLINT
     using value_type = T *;
     using value_print_type = Masstree::value_print<value_type>;
     using threadinfo_type = threadinfo;
@@ -259,6 +259,117 @@ public:
       RETURN lp.value();
     }
     RETURN nullptr;
+  }
+
+  inline PTX_PROMISE(T *) get_value_ptx_flat(std::string_view key) {
+    unlocked_cursor_type lp(table_, key.data(), key.size());
+  
+    //bool found = PTX_AWAIT lp.find_unlocked_ptx(*ti);
+    bool found;
+    {
+      int match;
+      key_indexed_position kx;
+      Masstree::node_base<table_params>* root = const_cast<Masstree::node_base<table_params>*>(lp.root_);
+    retry:
+      //lp.n_ = PTX_AWAIT root->reach_leaf_ptx(lp.ka_, lp.v_, *ti);
+      {
+	const Masstree::node_base<table_params> *n[2];
+	typename Masstree::node_base<table_params>::nodeversion_type v[2];
+	bool sense;
+	
+	// Get a non-stale root.
+	// Detect staleness by checking whether n has ever split.
+	// The true root has never split.
+	//retry:
+	sense = false;
+	n[sense] = root;
+	while (1) {
+#if 0 // t3suzuki
+	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
+	  in->prefetch256B();
+	  PTX_SUSPEND;
+#endif
+	  v[sense] = n[sense]->stable_annotated(ti->stable_fence());
+	  if (v[sense].is_root())
+            break;
+	  ti->mark(tc_root_retry);
+	  n[sense] = n[sense]->maybe_parent();
+	}
+	
+	// Loop over internal nodes.
+	while (!v[sense].isleaf()) {
+	  const Masstree::internode<table_params> *in = static_cast<const Masstree::internode<table_params>*>(n[sense]);
+#if 0 // t3suzuki
+	  in->prefetch();
+	  PTX_SUSPEND;
+#endif
+	  int kp = Masstree::internode<table_params>::bound_type::upper(lp.ka_, *in);
+	  n[!sense] = in->child_[kp];
+	  if (!n[!sense])
+            goto retry;
+#if 1 // t3suzuki
+	  const Masstree::internode<table_params> *cin = static_cast<const Masstree::internode<table_params>*>(n[!sense]);
+	  cin->prefetch256B();
+	  PTX_SUSPEND;
+#endif
+	  v[!sense] = n[!sense]->stable_annotated(ti->stable_fence());
+	  
+	  if (likely(!in->has_changed(v[sense]))) {
+            sense = !sense;
+            continue;
+	  }
+	  
+	  typename Masstree::node_base<table_params>::nodeversion_type oldv = v[sense];
+	  v[sense] = in->stable_annotated(ti->stable_fence());
+	  if (oldv.has_split(v[sense])
+	      && in->stable_last_key_compare(lp.ka_, v[sense], *ti) > 0) {
+	    ti->mark(tc_root_retry);
+	    goto retry;
+	  } else
+            ti->mark(tc_internode_retry);
+	}
+
+	lp.v_ = v[sense];
+	//PTX_RETURN const_cast<leaf<table_params> *>(static_cast<const leaf<table_params> *>(n[sense]));
+	lp.n_ = const_cast<Masstree::leaf<table_params> *>(static_cast<const Masstree::leaf<table_params> *>(n[sense]));
+      }
+   
+    forward:
+      if (lp.v_.deleted())
+        goto retry;
+   
+      lp.n_->prefetchRem();
+      PTX_SUSPEND;
+      lp.perm_ = lp.n_->permutation();
+      kx = Masstree::leaf<table_params>::bound_type::lower(lp.ka_, lp);
+      if (kx.p >= 0) {
+        lp.lv_ = lp.n_->lv_[kx.p];
+        lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
+    	PTX_SUSPEND;
+        match = lp.n_->ksuf_matches(kx.p, lp.ka_);
+      } else
+        match = 0;
+      if (lp.n_->has_changed(lp.v_)) {
+        ti->mark(threadcounter(tc_stable_leaf_insert + lp.n_->simple_has_split(lp.v_)));
+        lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, *ti);
+        goto forward;
+      }
+   
+      if (match < 0) {
+        lp.ka_.shift_by(-match);
+        root = lp.lv_.layer();
+        goto retry;
+      }
+      found = (bool)match;
+    }
+  
+    if (found) {
+      T *value_ptr = lp.value();
+      ::prefetch(value_ptr);
+      PTX_RETURN value_ptr;
+    } else {
+      PTX_RETURN nullptr;
+    }
   }
   
   inline PTX_PROMISE(T *) get_value_ptx(const char *key, std::size_t len_key) {  // NOLINT

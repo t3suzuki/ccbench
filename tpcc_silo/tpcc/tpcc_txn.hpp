@@ -10,4 +10,5 @@ namespace TPCC {
 
   PROMISE(bool) run_payment(query::Payment *query, HistoryKeyGenerator *hkg, Token &token, MyRW *myrw = nullptr);
   PTX_PROMISE(bool) run_payment_ptx(query::Payment *query, HistoryKeyGenerator *hkg, MyRW *myrw = nullptr);
+  PTX_PROMISE(void) run_payment_ptx2(query::Payment *query);
 }

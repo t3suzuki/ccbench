@@ -103,7 +103,8 @@ PTX_PROMISE(void) ptx_work(const bool &quit, const uint16_t w_id, std::uint64_t 
         PTX_AWAIT TPCC::run_payment_ptx(&query.payment, &hkg, &myrw);
         validation = TPCC::run_payment(&query.payment, &hkg, token, &myrw);
 #else
-        PTX_AWAIT TPCC::run_payment_ptx(&query.payment, &hkg);
+        //PTX_AWAIT TPCC::run_payment_ptx(&query.payment, &hkg);
+	PTX_AWAIT TPCC::run_payment_ptx2(&query.payment);
         validation = TPCC::run_payment(&query.payment, &hkg, token);
 #endif
         break;
@@ -335,12 +336,23 @@ int main(int argc, char *argv[]) try {
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
   initResult();
+
+
   std::vector<char> readys(FLAGS_thread_num);
   std::vector<std::thread> thv;
   for (size_t i = 0; i < FLAGS_thread_num; ++i)
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
   waitForReady(readys);
+
+  {
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
+  }
+  printf("Masstree prefetch count %d\n", MASSTREE_PREFETCH_COUNT);
+  dax_stat();
+
   stopwatch.mark();
   ::printf("load latency: %.3f sec.\n", stopwatch.period());
   ::printf("starting workload...\n");
@@ -352,6 +364,8 @@ int main(int argc, char *argv[]) try {
     sleepMs(1000);
   }
   storeRelease(quit, true);
+
+
 #if 0
   system("ipmctl show -dimm -performance");
 #endif
