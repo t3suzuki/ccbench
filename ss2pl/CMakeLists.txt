@@ -39,9 +39,13 @@ set(SS2PL_LIBS
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
         ${PROJECT_SOURCE_DIR}/../third_party/masstree/libkohler_masstree_json.a
+        ${PROJECT_SOURCE_DIR}/../third_party/memkind/.libs/libmemkind.a
+	dl
+	daxctl
         Threads::Threads
 	)
       
+set_target_properties(ss2pl_original PROPERTIES COMPILE_FLAGS "-DMASSTREE_PREFETCH_COUNT=4")
 target_link_libraries(ss2pl_original ${SS2PL_LIBS})
 
 if (DEFINED ADD_ANALYSIS)
@@ -92,7 +96,7 @@ if (DEFINED CORO)
     #target_link_libraries(corobase_${N_CORO}coro ${SS2PL_LIBS})
     
     add_executable(ptx_${N_CORO}coro ${SS2PL_SOURCES})
-    set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
+    set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DMASSTREE_PREFETCH_COUNT=4 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_${N_CORO}coro ${SS2PL_LIBS})
   endforeach()
 endif()
@@ -100,12 +104,12 @@ endif()
 
 if (DEFINED DAX)
   add_executable(ss2pl_dax ${SS2PL_SOURCES})
-  set_target_properties(ss2pl_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DDAX_MIGRATE=1")
+  set_target_properties(ss2pl_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1 -DMASSTREE_PREFETCH_COUNT=4 -DDAX_MIGRATE=1")
   target_link_libraries(ss2pl_dax ${SS2PL_LIBS})
 
   foreach(N_CORO 1 2 4 8 16 32 64 128)
     add_executable(ptx_dax_${N_CORO}coro ${SS2PL_SOURCES})
-    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
+    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1 -DMASSTREE_PREFETCH_COUNT=3 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_dax_${N_CORO}coro ${SS2PL_LIBS})
   endforeach()
 endif()
