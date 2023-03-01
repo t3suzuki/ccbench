@@ -186,7 +186,7 @@ void original_work(const bool &quit, const uint16_t w_id, std::uint64_t &lcl_cmt
 
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) try {
 
-#ifdef CCBENCH_LINUX
+#if 1
   ccbench::setThreadAffinity(thid);
 #endif
 
@@ -293,6 +293,11 @@ void my_time_func(const bool &all_done)
 #endif
 
 int main(int argc, char *argv[]) try {
+
+#if DAX
+  dax_init();
+#endif
+  
 #if MY_TIME_CORE
   bool all_done = false;
   std::thread time_thread(my_time_func, std::ref(all_done));
@@ -319,6 +324,14 @@ int main(int argc, char *argv[]) try {
   // The remaining load will be processed by each worker threads.
 #endif
 
+#if DAX
+#if DAX_MIGRATE
+  printf("Migrate SCM->DRAM...\n");
+  kohler_masstree::dfs_conv();
+#endif
+#endif
+
+  
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
   initResult();
@@ -331,11 +344,17 @@ int main(int argc, char *argv[]) try {
   stopwatch.mark();
   ::printf("load latency: %.3f sec.\n", stopwatch.period());
   ::printf("starting workload...\n");
+#if 0
+  system("ipmctl show -dimm -performance");
+#endif
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
   }
   storeRelease(quit, true);
+#if 0
+  system("ipmctl show -dimm -performance");
+#endif
   for (auto &th : thv) th.join();
 
   for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
@@ -350,6 +369,14 @@ int main(int argc, char *argv[]) try {
   all_done = true;
   time_thread.join();
 #endif
+
+  {
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    printf("Max RSS: %f MB\n", ru.ru_maxrss / 1024.0);
+  }
+  printf("Masstree prefetch count %d\n", MASSTREE_PREFETCH_COUNT);
+  dax_stat();
 
   return 0;
 } catch (std::bad_alloc &) {

@@ -42,7 +42,12 @@ Status insert_detail(
     return Status::WARN_ALREADY_EXISTS;
   }
 
+#if DAX
+  Record* rec = (Record*)malloc(sizeof(Record));
+  new (rec) Record(tuple_func());
+#else
   Record *rec = new Record(tuple_func());
+#endif
   assert(rec != nullptr);
   Status rr = kohler_masstree::insert_record(st, rec->get_tuple().get_key(), rec);
   if (rr != Status::OK) {
@@ -75,7 +80,12 @@ PROMISE(Status) insert_detail_coro(
     RETURN Status::WARN_ALREADY_EXISTS;
   }
 
+#if DAX
+  Record* rec = (Record*)malloc(sizeof(Record));
+  new (rec) Record(tuple_func());
+#else
   Record *rec = new Record(tuple_func());
+#endif
   assert(rec != nullptr);
   Status rr = AWAIT kohler_masstree::insert_record_coro(st, rec->get_tuple().get_key(), rec);
   if (rr != Status::OK) {
@@ -283,7 +293,12 @@ Status upsert_detail(Token token, Storage st, KeyFunc&& key_func, TupleFunc&& tu
   masstree_wrapper<Record>::thread_init(cached_sched_getcpu());
   Record *rec_ptr{static_cast<Record *>(kohler_masstree::kohler_masstree::find_record(st, key_func()))};
   if (rec_ptr == nullptr) {
+#if DAX
+    rec_ptr = (Record*)malloc(sizeof(Record));
+    new (rec_ptr) Record(tuple_func());
+#else
     rec_ptr = new Record(tuple_func());
+#endif
     Status insert_result = kohler_masstree::insert_record(st, rec_ptr->get_tuple().get_key(), rec_ptr);
     if (insert_result == Status::OK) {
       ti->get_write_set().emplace_back(OP_TYPE::INSERT, st, rec_ptr);

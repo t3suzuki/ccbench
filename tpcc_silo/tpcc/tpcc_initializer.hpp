@@ -19,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-
+void *dax_malloc(size_t sz);
 
 using namespace ccbench;
 
@@ -28,7 +28,12 @@ namespace TPCC::Initializer {
 
 void db_insert_raw(Storage st, std::string_view key, HeapObject&& val)
 {
+#if DAX
+  Record* rec = (Record*)dax_malloc(sizeof(Record));
+  new (rec) Record(Tuple(key, std::move(val)));
+#else
     Record* rec = new Record(Tuple(key, std::move(val)));
+#endif
     rec->set_for_load();
     Status sta = kohler_masstree::insert_record(st, key, rec);
     if (sta != Status::OK) {
@@ -271,7 +276,9 @@ void load_customer(uint8_t d_id, std::uint16_t w_id, TPCC::HistoryKeyGenerator &
         std::time_t now = ccbench::epoch::get_lightweight_timestamp();
         HeapObject obj;
         obj.allocate<TPCC::Customer>();
+	//printf("cust %d\n", sizeof(TPCC::Customer));
         TPCC::Customer& customer = obj.ref();
+	//printf("cust %p\n", &customer);
         customer.C_ID = c_id;
         customer.C_D_ID = d_id;
         customer.C_W_ID = w_id;
@@ -324,12 +331,10 @@ void load_customer(uint8_t d_id, std::uint16_t w_id, TPCC::HistoryKeyGenerator &
         Record *rec_ptr = reinterpret_cast<Record*>(kohler_masstree::find_record(Storage::SECONDARY, c_last_key));
         if (rec_ptr != nullptr) {
           memcpy(&ctn_ptr, rec_ptr->get_tuple().get_val().data(), sizeof(uintptr_t));
-          //::printf("found %p\n", ctn_ptr);
           ctn_ptr->push_back(pkey);
         } else {
           ctn_ptr = new std::vector<SimpleKey<8>>;
           ctn_ptr->reserve(8); // 8 * 8 = 64 bytes.
-          //::printf("new   %p\n", ctn_ptr);
           ctn_ptr->push_back(pkey);
           HeapObject obj;
           obj.allocate<uintptr_t>();

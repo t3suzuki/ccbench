@@ -284,6 +284,33 @@ public:
     return get_value(key.data(), key.size());
   }
 
+  node_type* _dfs_conv(node_type* current, int height) {
+    int height_th = 15;
+    
+    if (!current->isleaf()) {
+      internode_type* in = (internode_type *)current;
+      if (height < height_th) {
+	for (int i=0; i<in->nkeys_+1; i++) {
+	  if (in->child_[i]) {
+	    in->child_[i] = _dfs_conv((node_type *)in->child_[i], height+1);
+	  }
+	}
+      }
+      if (height < height_th+1) {
+	void *ptr = malloc(sizeof(internode_type));
+	memcpy(ptr, in, sizeof(internode_type));
+	node_type *n = (node_type*)ptr;
+	return n;
+      }
+    } else {
+    }
+    return current;
+  }
+  void dfs_conv() {
+    table_.root_ = _dfs_conv((node_type *)table_.root_, 0);
+  }
+
+  
   void scan(const char *const lkey, const std::size_t len_lkey,
             const bool l_exclusive, const char *const rkey,
             const std::size_t len_rkey, const bool r_exclusive,
@@ -335,6 +362,11 @@ public:
 
   static masstree_wrapper<Record> &get_mtdb(Storage st) {
     return MTDB.at(static_cast<std::uint32_t>(st));
+  }
+  static void dfs_conv() {
+    for (auto it = MTDB.begin(); it != MTDB.end(); it++) {
+      it->dfs_conv();
+    }
   }
 
   /**
