@@ -8,6 +8,8 @@
 #include "index/masstree_beta/include/masstree_beta_wrapper.h"
 #include "session_info.h"
 
+void dax_free(char *);
+
 namespace ccbench::garbage_collection {
 
 [[maybe_unused]] void release_all_heap_objects() {
@@ -30,7 +32,11 @@ void remove_all_leaf_from_mt_db_and_release() {
                reinterpret_cast<void *>(const_cast<char *>(itr->get_tuple().get_val().data())), 8);
         delete ctn_ptr;
       }
+#if DAX
+      dax_free((char *)itr);
+#else
       delete itr;  // NOLINT
+#endif
     }
 
     /**
@@ -48,7 +54,11 @@ void delete_all_garbage_records() {
     RecPtrContainer& q = get_garbage_records_at(i);
     while (!q.empty()) {
       Record* rec = q.front();
+#if DAX
+      dax_free((char*)rec);
+#else
       delete rec; // NOLINT
+#endif
       q.pop_front();
     }
   }
