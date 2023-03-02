@@ -905,6 +905,27 @@ inline bool my_abort(Token &token)
   return false;
 }
 
+PTX_PROMISE (void) run_new_order_ptx2(TPCC::query::NewOrder *query)
+{
+  bool remote = query->remote;
+  uint16_t w_id = query->w_id;
+  uint8_t d_id = query->d_id;
+  uint32_t c_id = query->c_id;
+  uint8_t ol_cnt = query->ol_cnt;
+
+  if (1) {
+    SimpleKey<8> w_key;
+    TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
+    PTX_AWAIT kohler_masstree::get_mtdb(Storage::WAREHOUSE).get_value_ptx_flat(w_key.view());
+  }
+  if (1) {
+    SimpleKey<8> c_key;
+    TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
+    PTX_AWAIT kohler_masstree::get_mtdb(Storage::CUSTOMER).get_value_ptx_flat(c_key.view());
+  }
+}
+
+
 PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *myrw = nullptr)
 {
   bool remote = query->remote;
