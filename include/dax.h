@@ -19,12 +19,18 @@ dax_init()
 {
 #define MMAP_SIZE ((size_t)1024*1024*1024*128)
 #if USE_MEMKIND
-  char path[] = "/mnt/mountpoint";
-  int err = 0;
-  err = memkind_create_pmem(path, MMAP_SIZE, &pmem_kind);
+  char path[] = "/dev/dax0.0";
+  int fd = open(path, O_RDWR);
+  if (fd == -1) {
+    perror("open");
+    exit(-1);
+  }
+  dax_base = (char *)mmap(NULL, MMAP_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_POPULATE, fd, 0);
+  int err = memkind_create_fixed(dax_base, MMAP_SIZE, &pmem_kind);
   if (err) {
     exit(-1);
   }
+  printf("memkind %s\n", path);
 #else
   char path[] = "/dev/dax0.0";
   int fd = open(path, O_RDWR);
@@ -33,6 +39,7 @@ dax_init()
     exit(-1);
   }
   dax_base = (char *)mmap(NULL, MMAP_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_POPULATE, fd, 0);
+  printf("non-memkind %s\n", path);
 #endif
   dax_enabled  = true;
   printf("DAX init done\n");
