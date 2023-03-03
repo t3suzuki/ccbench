@@ -130,6 +130,53 @@ inline static void makeProcedure(std::vector <Procedure> &pro, Xoroshiro128Plus 
 #endif
   pro.clear();
   bool ronly_flag(true), wonly_flag(true);
+
+  if (max_ope == 9999) {
+    // retwis
+    ronly_flag = false;
+    wonly_flag = false;
+    uint32_t r = rnd.next() % 100;
+    std::vector<uint64_t> keyIdx;
+    int n_rw;
+    int n_w;
+    if (r < 0) {
+      // add_user
+      n_rw = 1;
+      n_w = 3;
+    } else if (r < 20) {
+      // follow
+      n_rw = 2;
+      n_w = 2;
+    } else if (r < 50) {
+      // post
+      n_rw = 3;
+      n_w = 5;
+    } else {
+      // timeline
+      n_rw = 1 + (rnd.next() % 9);
+      n_w = 0;
+      ronly_flag = true;
+    }
+
+    for (int i=0; i<std::max(n_rw,n_w); i++) {
+      keyIdx.push_back(zipf() % tuple_num);
+    }
+    std::sort(keyIdx.begin(), keyIdx.end());
+    int ik = 0;
+    for (int i=0; i<n_rw; i++) {
+      if (n_w) {
+	pro.emplace_back(Ope::READ_MODIFY_WRITE, keyIdx[ik++]);
+      } else {
+	pro.emplace_back(Ope::READ, keyIdx[ik++]);
+      }
+    }
+    if (n_rw < n_w) {
+      for (int i=0; i<n_w - n_rw; i++) {
+	pro.emplace_back(Ope::WRITE, keyIdx[ik++]);
+      }
+    }
+  } else {
+
   for (size_t i = 0; i < max_ope; ++i) {
     uint64_t tmpkey;
     // decide access destination key.
@@ -165,6 +212,7 @@ inline static void makeProcedure(std::vector <Procedure> &pro, Xoroshiro128Plus 
         pro.emplace_back(Ope::WRITE, tmpkey);
       }
     }
+  }
   }
 
   (*pro.begin()).ronly_ = ronly_flag;
