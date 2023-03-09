@@ -384,9 +384,11 @@ void my_time_func(const bool &all_done)
 
   unsigned long long local_time = __rdtsc();
   for (;;) {
-    while (local_time - current_my_time < TSC_US/4) {
+    while (local_time - current_my_time < TSC_US/2) {
       local_time = __rdtsc();
-      _mm_pause();
+      for (int i=0; i<128; i++) {
+	_mm_pause();
+      }
     }
     current_my_time = local_time;
     if (all_done)
@@ -406,8 +408,8 @@ run_perf(const bool &start, const bool &quit)
   if(cpid == 0) {
     char buf[50];
     printf("perf...\n");
-    sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
-    //sprintf(buf, "perf record -C 0-15 -g");
+    //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
+    sprintf(buf, "perf record -C 0 -g");
     //sprintf(buf, "perf record -C 0-19 -g");
     execl("/bin/sh", "sh", "-c", buf, NULL);
   } else {
