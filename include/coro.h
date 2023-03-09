@@ -374,7 +374,7 @@ inline unsigned long long my_rdtsc() {
     return ret;
 }
 
-#define TSC_US (3000)
+#define TSC_US (2100)
 
 #if COROBASE
   #define PROMISE(t) task<t>
