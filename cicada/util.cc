@@ -268,7 +268,7 @@ void makeDB(uint64_t* initial_wts) {
     if (posix_memalign((void**) &Table, PAGE_SIZE, FLAGS_tuple_num * sizeof(Tuple)) !=
         0)
         ERR;
-#if dbs11
+#if 1 //dbs11
     if (madvise((void *)Table, (FLAGS_tuple_num) * sizeof(Tuple), MADV_HUGEPAGE) != 0)
       ERR;
 #endif

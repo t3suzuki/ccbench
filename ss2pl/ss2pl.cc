@@ -5,6 +5,7 @@
 #include <sys/types.h>    //syscall(SYS_gettid),
 #include <unistd.h>       //syscall(SYS_gettid),
 #include <x86intrin.h>
+#include <signal.h>
 
 #include <iostream>
 #include <string>  //string
@@ -183,6 +184,27 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   return;
 }
 
+void
+run_perf(const bool &start, const bool &quit)
+{
+  while (!loadAcquire(start)) _mm_pause();
+
+  int pid = getpid();
+  int cpid = fork();
+  if(cpid == 0) {
+    char buf[50];
+    printf("perf...\n");
+    //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
+    sprintf(buf, "perf record -C 0 -g");
+    //sprintf(buf, "perf record -C 0-19 -g");
+    execl("/bin/sh", "sh", "-c", buf, NULL);
+  } else {
+    setpgid(cpid, 0);
+    while (!loadAcquire(quit)) _mm_pause();
+    kill(-cpid, SIGINT);
+  }
+}
+
 thread_local tcalloc coroutine_allocator;
 int main(int argc, char *argv[]) try {
 #if DAX
@@ -213,6 +235,9 @@ int main(int argc, char *argv[]) try {
   for (size_t i = 0; i < FLAGS_thread_num; ++i)
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
+
+  //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+  
   waitForReady(readys);
   system("ipmctl show -dimm -performance");
   storeRelease(start, true);
