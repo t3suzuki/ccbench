@@ -158,6 +158,12 @@ void makeDB() {
                      (i + 1) * (FLAGS_tuple_num / maxthread) - 1);
   for (auto &th : thv) th.join();
 
+  uint64_t sum = 0;
+  for (size_t i=0; i<FLAGS_tuple_num; i++) {
+  Tuple *tmp = &Table[i];
+  sum += *(uint64_t *)tmp;
+  }
+printf("touch all tuples done. %lld\n", sum);
 }
 
 void leaderWork(uint64_t &epoch_timer_start, uint64_t &epoch_timer_stop) {

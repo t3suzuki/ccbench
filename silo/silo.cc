@@ -44,6 +44,7 @@ typedef struct {
   uint64_t tsc0;
   uint64_t tsc1;
   uint64_t tsc2;
+  uint64_t extra_tsc;
 } measure_t;
 
 measure_t measure_times[64];
@@ -173,12 +174,12 @@ RETRY:
          ++itr) {
 #if SKIP_INDEX
       if ((*itr).ope_ == Ope::READ) {
-        trans.read_skip_index((*itr));
+        trans.read_skip_index(thid, (*itr));
 	//PTX_AWAIT trans.read_skip_index2((*itr));
       } else if ((*itr).ope_ == Ope::WRITE) {
         trans.write_skip_index((*itr));
       } else if ((*itr).ope_ == Ope::READ_MODIFY_WRITE) {
-        trans.read_skip_index((*itr));
+        trans.read_skip_index(thid, (*itr));
 	//PTX_AWAIT trans.read_skip_index2((*itr));
         trans.write_skip_index((*itr));
       } else {
@@ -294,7 +295,6 @@ RETRY:
   }
 }
 
-
 void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   Result &myres = std::ref(SiloResult[thid]);
   Xoroshiro128Plus rnd;
@@ -407,9 +407,18 @@ run_perf(const bool &start, const bool &quit)
   int cpid = fork();
   if(cpid == 0) {
     char buf[50];
+    //sleep(1);
     printf("perf...\n");
     //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
-    sprintf(buf, "perf record -C 0 -g");
+    //sprintf(buf, "perf record -C 0 -g");
+    //sprintf(buf, "perf stat -e cycle_activity.stalls_mem_any,cycle_activity.stalls_l1d_miss,cycle_activity.stalls_l2_miss,cycle_activity.stalls_l3_miss -p %d", pid);
+    //sprintf(buf, "perf stat -e cycle_activity.stalls_mem_any -p %d", pid);
+    sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,offcore_requests.l3_miss_demand_data_rd,mem_load_retired.local_pmm");
+    //sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,LLC-load-misses,LLC-loads");
+    //sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,l2_rqsts.all_demand_data_rd,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_references,");
+    //sprintf(buf, "perf stat -a -e cycles,cycle_activity.stalls_mem_any,instructions,l1d_pend_miss.pending_cycles_any,L1-dcache-load-misses,L1-dcache-loads,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_references,LLC-load-misses,LLC-loads,offcore_requests.l3_miss_demand_data_rd,mem_load_retired.l3_miss,mem_inst_retired.all_loads,l2_rqsts.demand_data_rd_miss");
+    //sprintf(buf, "perf record -C 0 -e mem_load_retired.local_pmm -g");
+    //sprintf(buf, "perf stat -C 0 -e mem_load_retired.local_pmm");
     //sprintf(buf, "perf record -C 0-19 -g");
     execl("/bin/sh", "sh", "-c", buf, NULL);
   } else {
@@ -470,6 +479,8 @@ int main(int argc, char *argv[]) try {
 #if DAX
   system("ipmctl show -dimm -performance");
 #endif
+
+  printf("Ready!\n");
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
@@ -498,16 +509,20 @@ int main(int argc, char *argv[]) try {
   uint64_t sum0 = 0;
   uint64_t sum1 = 0;
   uint64_t sum2 = 0;
+  uint64_t extra_sum = 0;
   for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
     sum0 += measure_times[i].tsc0;
     sum1 += measure_times[i].tsc1;
     sum2 += measure_times[i].tsc2;
+    extra_sum += measure_times[i].extra_tsc;
   }
   printf("total measure time0 (TX start to end latency) = %ld\n", sum0);
   printf("total measure time1 (main-transaciton including validation time) = %ld\n", sum1);
   printf("total measure time2 (validation time) = %ld\n", sum2);
+  printf("total measure extra time (user defined time)  = %ld\n", extra_sum);
 #endif
 
+  sleep(1);
   
   struct rusage ru;
   getrusage(RUSAGE_SELF, &ru);

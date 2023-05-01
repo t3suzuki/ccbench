@@ -8,6 +8,18 @@
 
 extern void displayDB();
 
+#if 0
+typedef struct {
+  alignas(64)
+  uint64_t tsc0;
+  uint64_t tsc1;
+  uint64_t tsc2;
+  uint64_t extra_tsc;
+} measure_t;
+
+extern measure_t measure_times[64];
+#endif
+
 TxnExecutor::TxnExecutor(int thid, Result *sres) : thid_(thid), sres_(sres) {
   read_set_.reserve(FLAGS_max_ope);
   write_set_.reserve(FLAGS_max_ope);
@@ -165,7 +177,7 @@ FINISH_READ:
 
 
 #if SKIP_INDEX
-void TxnExecutor::read_skip_index(const Procedure &pro) {
+void TxnExecutor::read_skip_index(int thid, const Procedure &pro) {
   std::uint64_t key = pro.key_;
 #if ADD_ANALYSIS
   std::uint64_t start = rdtscp();
@@ -174,7 +186,10 @@ void TxnExecutor::read_skip_index(const Procedure &pro) {
   /**
    * read-own-writes or re-read from local read set.
    */
+  //uint64_t measure_start0 = rdtscp();
   if (searchReadSet(key) || searchWriteSet(key)) return;
+  //uint64_t measure_end0 = rdtscp();
+  //measure_times[thid].extra_tsc += measure_end0 - measure_start0;
   
   Tuple *tuple = (Tuple *)pro.tuple;
   if (tuple->fetch_tidword().latest == 0) {

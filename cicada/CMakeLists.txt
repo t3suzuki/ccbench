@@ -32,6 +32,7 @@ file(GLOB CICADA_SOURCES
         )
 
 add_executable(cicada_original ${CICADA_SOURCES})
+set_target_properties(cicada_original PROPERTIES COMPILE_FLAGS "-DMASSTREE_PREFETCH_COUNT=4")
 #set_target_properties(cicada_original PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1")
 
 set(CICADA_LIBS
@@ -40,6 +41,9 @@ set(CICADA_LIBS
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
         ${PROJECT_SOURCE_DIR}/../third_party/masstree/libkohler_masstree_json.a
+        ${PROJECT_SOURCE_DIR}/../third_party/memkind/.libs/libmemkind.a
+	dl
+	daxctl
         Threads::Threads
         )
 
@@ -137,7 +141,7 @@ if (DEFINED CORO)
       PRIVATE ${PROJECT_SOURCE_DIR}/../include
       PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
       )
-    set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
+    set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DMASSTREE_PREFETCH_COUNT=4 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
     #set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1 -DPTX=1 -DSKIP_INDEX=1 -DN_CORO=${N_CORO}")
     #set_target_properties(ptx_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_${N_CORO}coro ${CICADA_LIBS})
@@ -150,7 +154,7 @@ if (DEFINED DAX)
     PRIVATE ${PROJECT_SOURCE_DIR}/../include
     PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
     )
-  set_target_properties(cicada_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DDAX_MIGRATE=1")
+  set_target_properties(cicada_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DDAX_MIGRATE=1 -DUSE_MEMKIND=1 -DMASSTREE_PREFETCH_COUNT=4")
   target_link_libraries(cicada_dax ${CICADA_LIBS})
 
   foreach(N_CORO 1 2 4 8 16 32 64 128)
@@ -160,7 +164,7 @@ if (DEFINED DAX)
       PRIVATE ${PROJECT_SOURCE_DIR}/../third_party/spdlog/include
       )
     #set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDEFAULT_NEW=1 -DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
-    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
+    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1 -DMASSTREE_PREFETCH_COUNT=3 -DPTX=1 -DSKIP_INDEX=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
     target_link_libraries(ptx_dax_${N_CORO}coro ${CICADA_LIBS})
   endforeach()
 endif()

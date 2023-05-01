@@ -17,7 +17,7 @@ static char *dax_base;
 void
 dax_init()
 {
-#define MMAP_SIZE ((size_t)1024*1024*1024*128)
+#define MMAP_SIZE ((size_t)1024*1024*1024*512)
 #if USE_MEMKIND
   char path[] = "/dev/dax0.0";
   int fd = open(path, O_RDWR);

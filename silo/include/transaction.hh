@@ -74,7 +74,7 @@ public:
    * @param [in] key The key of key-value
    */
   PROMISE(void) read(std::uint64_t key);
-  void read_skip_index(const Procedure &pro);
+  void read_skip_index(int thid, const Procedure &pro);
   PTX_PROMISE(void) read_skip_index2(const Procedure &pro);
   PTX_PROMISE(Tuple *) prefetch_tree(std::uint64_t key);
 

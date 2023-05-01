@@ -287,7 +287,10 @@ public:
   
     if (found) {
       value_ptr = lp.value();
-      ::prefetch(value_ptr);
+      for (int ii=0; ii<VAL_SIZE+8; ii+=64) {
+	::prefetch((char *)value_ptr + ii);
+      }
+      //::prefetch(value_ptr);
       SUSPEND;
     } else {
       printf("something wrong?\n");
@@ -405,7 +408,17 @@ public:
   
     if (found) {
       value_ptr = lp.value();
-      ::prefetch(value_ptr);
+#if 1
+      for (int ii=0; ii<VAL_SIZE+8; ii+=64) {
+	::prefetch((char *)value_ptr + ii);
+      }
+#else
+      const int pref_sz = std::min(VAL_SIZE+8, 256);
+      for (int ii=0; ii<pref_sz; ii+=64) {
+	::prefetch((char *)value_ptr + ii);
+      }
+#endif
+      //::prefetch(value_ptr);
       PTX_SUSPEND;
     } else {
       printf("something wrong?\n");
