@@ -47,6 +47,8 @@ typedef struct {
   uint64_t extra_tsc;
 } measure_t;
 
+std::vector<uint64_t> times0;
+std::vector<uint64_t> times1;
 measure_t measure_times[64];
 #endif
 
@@ -169,6 +171,7 @@ RETRY:
 #if MEASURE_TIME
     uint64_t measure_start1 = rdtscp();
 #endif
+    
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
@@ -212,6 +215,9 @@ RETRY:
                    loadAcquire(myres.local_commit_counts_) + 1);
 #if MEASURE_TIME
       uint64_t measure_end = rdtscp();
+      //times0.push_back(measure_end);
+      //times1.push_back(measure_start0);
+      printf("%ld %ld %ld %ld\n", measure_end, measure_start0, measure_start1, measure_start2);
       measure_times[thid].tsc0 += measure_end - measure_start0;
       measure_times[thid].tsc1 += measure_end - measure_start1;
       measure_times[thid].tsc2 += measure_end - measure_start2;
@@ -221,6 +227,9 @@ RETRY:
       ++myres.local_abort_counts_;
 #if MEASURE_TIME
       uint64_t measure_end = rdtscp();
+      //times0.push_back(measure_end);
+      //times1.push_back(measure_start0);
+      //printf("%ld %ld\n", measure_end, measure_start0);
       measure_times[thid].tsc0 += measure_end - measure_start0;
       measure_times[thid].tsc1 += measure_end - measure_start1;
       measure_times[thid].tsc2 += measure_end - measure_start2;
@@ -520,6 +529,9 @@ int main(int argc, char *argv[]) try {
   printf("total measure time1 (main-transaciton including validation time) = %ld\n", sum1);
   printf("total measure time2 (validation time) = %ld\n", sum2);
   printf("total measure extra time (user defined time)  = %ld\n", extra_sum);
+  for (auto i=0; i<times0.size(); i++) {
+    printf("%ld %ld\n", times0[i], times1[1]);
+  }
 #endif
 
   sleep(1);

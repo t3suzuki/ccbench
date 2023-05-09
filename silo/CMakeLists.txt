@@ -180,6 +180,7 @@ if (DEFINED EMU)
       
       add_executable(ptx_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
       set_target_properties(ptx_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DMASSTREE_PREFETCH_COUNT=4 -DSKIP_INDEX=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
+      #set_target_properties(ptx_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DMASSTREE_PREFETCH_COUNT=4 -DSKIP_INDEX=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME} -DMEASURE_TIME")
       target_link_libraries(ptx_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
     endforeach()
   endforeach()
