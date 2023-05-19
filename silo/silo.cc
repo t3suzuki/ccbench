@@ -11,6 +11,24 @@
 #include <algorithm>
 #include <cctype>
 
+//#define RDPMU (1)
+//#define RDPMU_MORE (1)
+
+#if RDPMU
+#include "intel_xeon_pmu.h"
+using namespace Intel::XEON;
+
+u_int64_t programmableCounterValue(u_int16_t c) {
+  u_int64_t a,d;
+  __asm __volatile("mfence;lfence");                                                                           
+  __asm __volatile("rdpmc" : "=a" (a), "=d" (d) : "c" (c));
+  return ((d<<32)|a);
+}
+uint64_t tot_sum = 0;
+uint64_t main_sum = 0;
+//uint64_t main1_sum = 0;
+#endif
+
 #include "boost/filesystem.hpp"
 
 #define GLOBAL_VALUE_DEFINE
@@ -153,6 +171,7 @@ RETRY:
 #if MEASURE_TIME
     uint64_t measure_start0 = rdtscp();
 #endif
+
     
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
@@ -172,6 +191,14 @@ RETRY:
     uint64_t measure_start1 = rdtscp();
 #endif
     
+#if RDPMU_MORE
+    uint64_t main_start;
+    //uint64_t main1_start;
+    if (thid == 0) {
+      main_start = programmableCounterValue(0);
+      //main1_start = programmableCounterValue(1);
+    }
+#endif
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
@@ -213,11 +240,19 @@ RETRY:
        */
       storeRelease(myres.local_commit_counts_,
                    loadAcquire(myres.local_commit_counts_) + 1);
+#if RDPMU_MORE
+    if (thid == 0) {
+      auto main_end = programmableCounterValue(0);
+      //auto main1_end = programmableCounterValue(1);
+      main_sum += main_end - main_start;
+      //main1_sum += main1_end - main1_start;
+    }
+#endif
 #if MEASURE_TIME
       uint64_t measure_end = rdtscp();
       //times0.push_back(measure_end);
       //times1.push_back(measure_start0);
-      printf("%ld %ld %ld %ld\n", measure_end, measure_start0, measure_start1, measure_start2);
+      //printf("%ld %ld %ld %ld\n", measure_end, measure_start0, measure_start1, measure_start2);
       measure_times[thid].tsc0 += measure_end - measure_start0;
       measure_times[thid].tsc1 += measure_end - measure_start1;
       measure_times[thid].tsc2 += measure_end - measure_start2;
@@ -233,6 +268,14 @@ RETRY:
       measure_times[thid].tsc0 += measure_end - measure_start0;
       measure_times[thid].tsc1 += measure_end - measure_start1;
       measure_times[thid].tsc2 += measure_end - measure_start2;
+#endif
+#if RDPMU_MORE
+    if (thid == 0) {
+      auto main_end = programmableCounterValue(0);
+      //auto main1_end = programmableCounterValue(1);
+      main_sum += main_end - main_start;
+      //main1_sum += main1_end - main1_start;
+    }
 #endif
       goto RETRY;
     }
@@ -273,6 +316,12 @@ RETRY:
     
     if (loadAcquire(quit)) break;
 
+#if RDPMU_MORE
+    uint64_t main_start;
+    if (thid == 0) {
+      main_start = programmableCounterValue(0);
+    }
+#endif
     trans.begin();
     for (auto itr = trans.pro_set_.begin(); itr != trans.pro_set_.end();
          ++itr) {
@@ -296,9 +345,21 @@ RETRY:
        */
       storeRelease(myres.local_commit_counts_,
                    loadAcquire(myres.local_commit_counts_) + 1);
+#if RDPMU_MORE
+    if (thid == 0) {
+      auto main_end = programmableCounterValue(0);
+      main_sum += main_end - main_start;
+    }
+#endif
     } else {
       trans.abort();
       ++myres.local_abort_counts_;
+#if RDPMU_MORE
+    if (thid == 0) {
+      auto main_end = programmableCounterValue(0);
+      main_sum += main_end - main_start;
+    }
+#endif
       goto RETRY;
     }
   }
@@ -349,6 +410,14 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
   while (!loadAcquire(start)) _mm_pause();
   if (thid == 0) epoch_timer_start = rdtscp();
 
+#if RDPMU_MORE
+    uint64_t tot_start;
+    if (thid == 0) {
+      tot_start = programmableCounterValue(0);
+    }
+#endif
+
+  
 #if defined(COROBASE) || defined(PTX)
   int n_done = 0;
   bool done[N_CORO];
@@ -378,6 +447,20 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit) {
 #else
   original_work(thid, trans, zipf, rnd, myres,
 		quit, epoch_timer_start, epoch_timer_stop);
+#endif
+
+#if RDPMU_MORE
+    if (thid == 0) {
+      auto tot_end = programmableCounterValue(0);
+      tot_sum += tot_end - tot_start;
+    }
+#endif
+#if RDPMU
+    if (thid == 0) {
+      for (int ii=0; ii<6; ii++) {
+	printf("pmcv %d %lld\n", ii, programmableCounterValue(ii));
+      }
+    }
 #endif
   return;
 }
@@ -410,8 +493,6 @@ void
 run_perf(const bool &start, const bool &quit)
 {
   while (!loadAcquire(start)) _mm_pause();
-
-#if 1
   int pid = getpid();
   int cpid = fork();
   if(cpid == 0) {
@@ -422,10 +503,11 @@ run_perf(const bool &start, const bool &quit)
     //sprintf(buf, "perf record -C 0 -g");
     //sprintf(buf, "perf stat -e cycle_activity.stalls_mem_any,cycle_activity.stalls_l1d_miss,cycle_activity.stalls_l2_miss,cycle_activity.stalls_l3_miss -p %d", pid);
     //sprintf(buf, "perf stat -e cycle_activity.stalls_mem_any -p %d", pid);
-    sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,offcore_requests.l3_miss_demand_data_rd,mem_load_retired.local_pmm");
+    //sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,offcore_requests.l3_miss_demand_data_rd,mem_load_retired.local_pmm");
     //sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,LLC-load-misses,LLC-loads");
     //sprintf(buf, "perf stat -e cycles,cycle_activity.stalls_mem_any,instructions,l2_rqsts.all_demand_data_rd,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_references,");
     //sprintf(buf, "perf stat -a -e cycles,cycle_activity.stalls_mem_any,instructions,l1d_pend_miss.pending_cycles_any,L1-dcache-load-misses,L1-dcache-loads,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_references,LLC-load-misses,LLC-loads,offcore_requests.l3_miss_demand_data_rd,mem_load_retired.l3_miss,mem_inst_retired.all_loads,l2_rqsts.demand_data_rd_miss");
+    sprintf(buf, "perf stat -a -e mem_load_retired.l1_hit,mem_load_retired.l1_miss,L1-dcache-load-misses,L1-dcache-loads,LLC-loads,LLC-load-misses,l2_rqsts.all_demand_miss,llc_misses.mem_read,offcore_requests.l3_miss_demand_data_rd,l1d.replacement");
     //sprintf(buf, "perf record -C 0 -e mem_load_retired.local_pmm -g");
     //sprintf(buf, "perf stat -C 0 -e mem_load_retired.local_pmm");
     //sprintf(buf, "perf record -C 0-19 -g");
@@ -435,7 +517,6 @@ run_perf(const bool &start, const bool &quit)
     while (!loadAcquire(quit)) _mm_pause();
     kill(-cpid, SIGINT);
   }
-#endif
 }
 
 int main(int argc, char *argv[]) try {
@@ -490,6 +571,12 @@ int main(int argc, char *argv[]) try {
 #endif
 
   printf("Ready!\n");
+#if RDPMU
+  printf("setting rdpmu...\n");
+  PMU *pmu = new PMU(PMU::k_DEFAULT_XEON_CONFIG_0);
+  pmu->reset();
+  pmu->start();
+#endif
   storeRelease(start, true);
   for (size_t i = 0; i < FLAGS_extime; ++i) {
     sleepMs(1000);
@@ -499,6 +586,11 @@ int main(int argc, char *argv[]) try {
   system("ipmctl show -dimm -performance");
 #endif  
   for (auto &th : thv) th.join();
+
+#if RDPMU_MORE
+  //printf("rdpmc %lld %lld %lld\n", tot_sum, main_sum, main1_sum);
+  printf("rdpmc %lld %lld\n", tot_sum, main_sum);
+#endif
 
   for (unsigned int i = 0; i < FLAGS_thread_num; ++i) {
     SiloResult[0].addLocalAllResult(SiloResult[i]);
@@ -533,6 +625,7 @@ int main(int argc, char *argv[]) try {
     printf("%ld %ld\n", times0[i], times1[1]);
   }
 #endif
+
 
   sleep(1);
   

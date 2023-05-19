@@ -420,6 +420,7 @@ public:
 #endif
       //::prefetch(value_ptr);
       PTX_SUSPEND;
+      //*(volatile value_ptr_t *)value_ptr;
     } else {
       printf("something wrong?\n");
       std::cout << key << std::endl;

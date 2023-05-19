@@ -129,7 +129,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdl
 
 
 if (DEFINED CORO)
-  foreach(N_CORO 1 2 4 8 16 32 64 128 256 512)
+  foreach(N_CORO 1 2 4 8 16 32 64 128 256 512 1024)
     add_executable(corobase_${N_CORO}coro ${SILO_SOURCES})
     set_target_properties(corobase_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DMASSTREE_PREFETCH_COUNT=${MASSTREE_DRAM_DEFAULT} -DN_CORO=${N_CORO}")
     target_link_libraries(corobase_${N_CORO}coro ${SILO_LIBS})
