@@ -905,24 +905,63 @@ inline bool my_abort(Token &token)
   return false;
 }
 
-PTX_PROMISE (void) run_new_order_ptx2(TPCC::query::NewOrder *query)
+PTX_PROMISE(bool) run_new_order_ptx2(TPCC::query::NewOrder *query, MyRW *myrw)
 {
-  bool remote = query->remote;
-  uint16_t w_id = query->w_id;
-  uint8_t d_id = query->d_id;
-  uint32_t c_id = query->c_id;
-  uint8_t ol_cnt = query->ol_cnt;
-
-  if (1) {
+  if (0) {
     SimpleKey<8> w_key;
-    TPCC::Warehouse::CreateKey(w_id, w_key.ptr());
-    PTX_AWAIT kohler_masstree::get_mtdb(Storage::WAREHOUSE).get_value_ptx_flat(w_key.view());
+    TPCC::Warehouse::CreateKey(query->w_id, w_key.ptr());
+    Record *rec = PTX_AWAIT kohler_masstree::get_mtdb(Storage::WAREHOUSE).get_value_ptx_flat(w_key.view());
   }
   if (1) {
     SimpleKey<8> c_key;
-    TPCC::Customer::CreateKey(w_id, d_id, c_id, c_key.ptr());
-    PTX_AWAIT kohler_masstree::get_mtdb(Storage::CUSTOMER).get_value_ptx_flat(c_key.view());
+    TPCC::Customer::CreateKey(query->w_id, query->d_id, query->c_id, c_key.ptr());
+    Record *rec = PTX_AWAIT kohler_masstree::get_mtdb(Storage::CUSTOMER).get_value_ptx_flat(c_key.view());
+    if (rec) {
+      myrw->rd(Storage::CUSTOMER, c_key.view(), rec);
+      Tuple tuple = rec->get_tuple();
+      ::prefetch(tuple.get_value().data());
+    } else {
+      PTX_RETURN false;
+    }
   }
+  
+  if (0) {
+    SimpleKey<8> d_key;
+    TPCC::District::CreateKey(query->w_id, query->d_id, d_key.ptr());
+    Record *rec = PTX_AWAIT kohler_masstree::get_mtdb(Storage::DISTRICT).get_value_ptx_flat(d_key.view());
+    myrw->rd(Storage::DISTRICT, d_key.view(), rec);
+    if (rec) {
+      Tuple tuple = rec->get_tuple();
+      ::prefetch(tuple.get_value().data());
+    }
+  }
+  for (std::uint32_t ol_num = 0; ol_num < query->ol_cnt; ++ol_num) {
+    uint32_t ol_i_id = query->items[ol_num].ol_i_id;
+    uint16_t ol_supply_w_id = query->items[ol_num].ol_supply_w_id;
+    if (0) {
+      SimpleKey<8> i_key;
+      TPCC::Item::CreateKey(ol_i_id, i_key.ptr());
+      Record *rec = PTX_AWAIT kohler_masstree::get_mtdb(Storage::ITEM).get_value_ptx_flat(i_key.view());
+      if (rec) {
+	Tuple tuple = rec->get_tuple();
+	::prefetch(tuple.get_value().data());
+      } else {
+	PTX_RETURN false;
+      }
+    }
+    if (0) {
+      SimpleKey<8> s_key;
+      TPCC::Stock::CreateKey(ol_supply_w_id, ol_i_id, s_key.ptr());
+      Record *rec = PTX_AWAIT kohler_masstree::get_mtdb(Storage::STOCK).get_value_ptx_flat(s_key.view());
+      if (rec) {
+	Tuple tuple = rec->get_tuple();
+	::prefetch(tuple.get_value().data());
+      } else {
+	PTX_RETURN false;
+      }
+    }
+  }
+  PTX_RETURN true;
 }
 
 
@@ -933,16 +972,20 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *my
   uint8_t d_id = query->d_id;
   uint32_t c_id = query->c_id;
   uint8_t ol_cnt = query->ol_cnt;
-
   const TPCC::Warehouse *ware;
-#if MYRW
-  if (!get_warehouse_myrw(token, w_id, ware, myrw)) RETURN my_abort(token);
-#else
-  auto ret_warehouse = AWAIT get_warehouse_coro(token, w_id, ware);
-  if (!ret_warehouse) RETURN my_abort(token);
-#endif
-
   const TPCC::Customer *cust;
+  const TPCC::District *dist;
+  uint32_t o_id;
+  [[maybe_unused]] const TPCC::Order *ord;
+  if (1) {
+#if MYRW
+    if (!get_warehouse_myrw(token, w_id, ware, myrw)) RETURN my_abort(token);
+#else
+    auto ret_warehouse = AWAIT get_warehouse_coro(token, w_id, ware);
+    if (!ret_warehouse) RETURN my_abort(token);
+#endif
+  }
+
 #if MYRW
   if (!get_customer_myrw(token, c_id, d_id, w_id, cust, myrw)) RETURN my_abort(token);
 #else
@@ -951,18 +994,19 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *my
     RETURN my_abort(token);
 #endif
 
-  const TPCC::District *dist;
+  if (0) {
 #if MYRW
-  if (!get_and_update_district_myrw(token, d_id, w_id, dist, myrw)) RETURN my_abort(token);
+    if (!get_and_update_district_myrw(token, d_id, w_id, dist, myrw)) RETURN my_abort(token);
 #else
-  auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, dist);
-  if (!ret_district)
-    RETURN my_abort(token);
+    auto ret_district = AWAIT get_and_update_district_coro(token, d_id, w_id, dist);
+    if (!ret_district)
+      RETURN my_abort(token);
 #endif
 
-  uint32_t o_id = dist->D_NEXT_O_ID;
-  [[maybe_unused]] const TPCC::Order *ord;
+    o_id = dist->D_NEXT_O_ID;
+  }
 
+#if 0
   if (FLAGS_insert_exe) {
 #if 0
     if (!insert_order(token, o_id, d_id, w_id, c_id, ol_cnt, remote, ord)) RETURN my_abort(token);
@@ -976,29 +1020,33 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *my
       RETURN my_abort(token);
 #endif
   }
-
+#endif
+  
   for (std::uint32_t ol_num = 0; ol_num < ol_cnt; ++ol_num) {
     uint32_t ol_i_id = query->items[ol_num].ol_i_id;
     uint16_t ol_supply_w_id = query->items[ol_num].ol_supply_w_id;
     uint8_t ol_quantity = query->items[ol_num].ol_quantity;
-
     const TPCC::Item *item;
-#if MYRW
-    if (!get_item_myrw(token, ol_i_id, item, myrw)) RETURN my_abort(token);
-#else
-    auto ret_item = AWAIT get_item_coro(token, ol_i_id, item);
-    if (!ret_item)
-      RETURN my_abort(token);
-#endif
-
     const TPCC::Stock *sto;
+      
+    if (0) {
 #if MYRW
-    if (!get_and_update_stock_myrw(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw)) RETURN my_abort(token);
+      if (!get_item_myrw(token, ol_i_id, item, myrw)) RETURN my_abort(token);
 #else
-    auto ret_stock = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
-    if (!ret_stock)
-      RETURN my_abort(token);
+      auto ret_item = AWAIT get_item_coro(token, ol_i_id, item);
+      if (!ret_item)
+	RETURN my_abort(token);
 #endif
+    }
+    if (0) {
+#if MYRW
+      if (!get_and_update_stock_myrw(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto, myrw)) RETURN my_abort(token);
+#else
+      auto ret_stock = AWAIT get_and_update_stock_coro(token, ol_supply_w_id, ol_i_id, ol_quantity, remote, sto);
+      if (!ret_stock)
+	RETURN my_abort(token);
+#endif
+    }
 
     if (FLAGS_insert_exe) {
       double i_price = item->I_PRICE;
@@ -1018,7 +1066,9 @@ PROMISE(bool) run_new_order(TPCC::query::NewOrder *query, Token &token, MyRW *my
 	RETURN my_abort(token);
 #endif
     }
+
   } // end of ol loop
+
   if (commit(token) == Status::OK) {
     RETURN true;
   }

@@ -717,12 +717,32 @@ PTX_PROMISE(void) run_payment_ptx2(query::Payment *query)
     PTX_AWAIT kohler_masstree::get_mtdb(Storage::WAREHOUSE).get_value_ptx_flat(w_key.view());
   }
 
-  if (1) {
+  if (0) {
     SimpleKey<8> d_key;
     TPCC::District::CreateKey(w_id, d_id, d_key.ptr());
     PTX_AWAIT kohler_masstree::get_mtdb(Storage::DISTRICT).get_value_ptx_flat(d_key.view());
   }
-
+  if (1) {
+    SimpleKey<8> c_key;
+    if (query->by_last_name) {
+      char c_last_key_buf[Customer::CLastKey::required_size()];
+      std::string_view c_last_key = Customer::CreateSecondaryKey(c_w_id, c_d_id, query->c_last, &c_last_key_buf[0]);
+      auto ret_ptr = PTX_AWAIT kohler_masstree::get_mtdb(Storage::SECONDARY).get_value_ptx_flat(c_last_key);
+      assert(ret_ptr != nullptr);
+      std::vector<SimpleKey<8>> *vec_ptr;
+      std::string_view value_view = reinterpret_cast<Record *>(ret_ptr)->get_tuple().get_val();
+      assert(value_view.size() == sizeof(uintptr_t));
+      ::memcpy(&vec_ptr, value_view.data(), sizeof(uintptr_t));
+      size_t nr_same_name = vec_ptr->size();
+      assert(nr_same_name > 0);
+      size_t idx = (nr_same_name + 1) / 2 - 1; // midpoint.
+      c_key = (*vec_ptr)[idx];
+    } else {
+      // search customers by c_id
+      TPCC::Customer::CreateKey(c_w_id, c_d_id, c_id, c_key.ptr());
+    }
+    PTX_AWAIT kohler_masstree::get_mtdb(Storage::CUSTOMER).get_value_ptx_flat(c_key.view());
+  }
   
   PTX_RETURN;
 }

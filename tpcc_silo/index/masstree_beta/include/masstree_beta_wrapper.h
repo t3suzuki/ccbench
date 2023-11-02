@@ -366,6 +366,7 @@ public:
     if (found) {
       T *value_ptr = lp.value();
       ::prefetch(value_ptr);
+      PTX_SUSPEND;
       PTX_RETURN value_ptr;
     } else {
       PTX_RETURN nullptr;

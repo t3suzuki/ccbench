@@ -347,8 +347,13 @@ struct Item {
   //Primary Key: I_ID
   //key size is 8 bytes.
   static void CreateKey(uint32_t i_id, char *out) {
+#if 0
     ::memset(&out[0], 0, 4);
     assign_as_bigendian(i_id, &out[4]);
+#else
+    assign_as_bigendian(i_id, &out[0]);
+    assign_as_bigendian(i_id, &out[4]);
+#endif
   }
 
   void createKey(char *out) const { CreateKey(I_ID, out); }

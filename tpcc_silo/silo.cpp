@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <signal.h>
 
 #include "cpu.h"
 
@@ -91,11 +92,15 @@ PTX_PROMISE(void) ptx_work(const bool &quit, const uint16_t w_id, std::uint64_t 
     switch (query.type) {
       case TPCC::Q_NEW_ORDER :
 #if MYRW
-        PTX_AWAIT TPCC::run_new_order_ptx(&query.new_order, &myrw);
-        validation = TPCC::run_new_order(&query.new_order, token, &myrw);
+        validation = PTX_AWAIT TPCC::run_new_order_ptx2(&query.new_order, &myrw);
+	if (validation) {
+	  validation = TPCC::run_new_order(&query.new_order, token, &myrw);
+	} 
 #else
-        PTX_AWAIT TPCC::run_new_order_ptx(&query.new_order);
-        validation = TPCC::run_new_order(&query.new_order, token);
+        validation = PTX_AWAIT TPCC::run_new_order_ptx2(&query.new_order, &myrw);
+	if (validation) {
+	  validation = TPCC::run_new_order(&query.new_order, token, &myrw);
+	} 
 #endif
         break;
       case TPCC::Q_PAYMENT :
@@ -293,6 +298,28 @@ void my_time_func(const bool &all_done)
 }
 #endif
 
+
+void
+run_perf(const bool &start, const bool &quit)
+{
+  while (!loadAcquire(start)) _mm_pause();
+
+  int pid = getpid();
+  int cpid = fork();
+  if(cpid == 0) {
+    char buf[50];
+    printf("perf...\n");
+    //sprintf(buf, "perf stat -ddd -p %d   > stat%d.log 2>&1", pid, pid);
+    sprintf(buf, "perf record -C 0 -g");
+    //sprintf(buf, "perf record -C 0-19 -g");
+    execl("/bin/sh", "sh", "-c", buf, NULL);
+  } else {
+    setpgid(cpid, 0);
+    while (!loadAcquire(quit)) _mm_pause();
+    kill(-cpid, SIGINT);
+  }
+}
+
 int main(int argc, char *argv[]) try {
 
 #if DAX
@@ -343,6 +370,9 @@ int main(int argc, char *argv[]) try {
   for (size_t i = 0; i < FLAGS_thread_num; ++i)
     thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
                      std::ref(quit));
+  
+  //std::thread perf_th(run_perf, std::ref(start), std::ref(quit));
+  
   waitForReady(readys);
 
   {

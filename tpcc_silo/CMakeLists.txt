@@ -66,6 +66,9 @@ set(SILO_LIBS numa
         gflags::gflags
         ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
         ${PROJECT_SOURCE_DIR}/../third_party/masstree/libkohler_masstree_json.a
+        ${PROJECT_SOURCE_DIR}/../third_party/memkind/.libs/libmemkind.a
+	dl
+	daxctl
         Threads::Threads
 	)
 
@@ -82,6 +85,8 @@ add_definitions(-DKVS_MAX_KEY_LENGTH=1000)
 add_definitions(-DKVS_LOG_GC_THRESHOLD=1)
 add_definitions(-DPROJECT_ROOT=${PROJECT_SOURCE_DIR})
 
+add_definitions(-DMASSTREE_PREFETCH_COUNT=4)
+
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -fcoroutines-ts -stdlib=libc++")
 #set_target_properties(silo.exe PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=1 -DN_CORO=64")
 
@@ -91,7 +96,7 @@ target_link_libraries(silo_original ${SILO_LIBS})
 
 
 if (DEFINED CORO)
-  foreach(N_CORO 1 2 4 8)
+  foreach(N_CORO 4)
     add_executable(corobase_${N_CORO}coro ${SILO_SOURCES})
     set_target_properties(corobase_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DN_CORO=${N_CORO}")
     target_include_directories(corobase_${N_CORO}coro ${SILO_INCS})
@@ -104,6 +109,27 @@ if (DEFINED CORO)
   endforeach()
 endif()
 
+if (DEFINED DAX)
+  add_executable(silo_dax ${SILO_SOURCES})
+  #set_target_properties(silo_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DDAX_MIGRATE=1")
+  set_target_properties(silo_dax PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1")
+  target_include_directories(silo_dax ${SILO_INCS})
+  target_link_libraries(silo_dax ${SILO_LIBS})
+
+  foreach(N_CORO 4 16)
+    # add_executable(corobase_dax_${N_CORO}coro ${SILO_SOURCES})
+    # set_target_properties(corobase_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1 -DCOROBASE=1 -DDAX_MIGRATE=1 -DN_CORO=${N_CORO}")
+    # target_include_directories(corobase_dax_${N_CORO}coro ${SILO_INCS})
+    # target_link_libraries(corobase_dax_${N_CORO}coro ${SILO_LIBS})
+
+    add_executable(ptx_dax_${N_CORO}coro ${SILO_SOURCES})
+    set_target_properties(ptx_dax_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DDAX=1 -DUSE_MEMKIND=1 -DPTX=1 -DN_CORO=${N_CORO}")
+    target_include_directories(ptx_dax_${N_CORO}coro ${SILO_INCS})
+    target_link_libraries(ptx_dax_${N_CORO}coro ${SILO_LIBS})
+  endforeach()
+endif()
+  
+
 if (DEFINED EMU)
   if (DEFINED MY_TIME_CORE)
     set(MY_TIME "-DMY_TIME_CORE=${MY_TIME_CORE}")
@@ -111,17 +137,17 @@ if (DEFINED EMU)
     message( FATAL_ERROR "Specify -DMY_TIME_CORE=N to use emulated slow memory." )
   endif()
 
-  foreach(TR_US 0 1 4 16 64)
-    foreach(N_CORO 1 2 4 8 16 32 64 128 256 512 1024)
-      add_executable(corobase_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
-      set_target_properties(corobase_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
-      target_include_directories(corobase_${TR_US}us_${N_CORO}coro ${SILO_INCS})
-      target_link_libraries(corobase_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+  foreach(TR_US 4)
+    foreach(N_CORO 1 4 16 64 256)
+      # add_executable(corobase_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
+      # set_target_properties(corobase_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DCOROBASE=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
+      # target_include_directories(corobase_${TR_US}us_${N_CORO}coro ${SILO_INCS})
+      # target_link_libraries(corobase_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
       
-      add_executable(ptx_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
-      set_target_properties(ptx_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
-      target_include_directories(ptx_${TR_US}us_${N_CORO}coro ${SILO_INCS})
-      target_link_libraries(ptx_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
+      # add_executable(ptx_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
+      # set_target_properties(ptx_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")
+      # target_include_directories(ptx_${TR_US}us_${N_CORO}coro ${SILO_INCS})
+      # target_link_libraries(ptx_${TR_US}us_${N_CORO}coro ${SILO_LIBS})
       
       add_executable(ptx2_${TR_US}us_${N_CORO}coro ${SILO_SOURCES})
       set_target_properties(ptx2_${TR_US}us_${N_CORO}coro PROPERTIES COMPILE_FLAGS "-DPTX=1 -DMYRW=1 -DTR_US=${TR_US} -DN_CORO=${N_CORO} ${MY_TIME}")

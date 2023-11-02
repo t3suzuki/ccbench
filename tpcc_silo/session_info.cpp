@@ -94,11 +94,7 @@ void session_info::gc_records_and_values() const {
     while (!q.empty()) {
       Record* rec = q.front();
       if (rec->get_tidw().get_epoch() > r_epoch) break;
-#if DAX
-      dax_free((char*)rec);
-#else
       delete rec;
-#endif
       q.pop_front();
     }
   }

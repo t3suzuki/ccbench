@@ -57,8 +57,13 @@ DECLARE_bool(insert_exe);
 #endif
 
 constexpr std::size_t DIST_PER_WARE{10};
+#if 1 // large
+constexpr std::size_t MAX_ITEMS{8192};
+constexpr std::size_t CUST_PER_DIST{48000};
+#else
 constexpr std::size_t MAX_ITEMS{100000};
 constexpr std::size_t CUST_PER_DIST{3000};
+#endif
 
 
 alignas(CACHE_LINE_SIZE) GLOBAL uint64_t_64byte *ThLocalEpoch;

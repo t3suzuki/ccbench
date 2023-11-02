@@ -66,9 +66,9 @@ private:
     std::string key;
     Record *rec;
   };
-  std::vector<tri_t> tris;
   int get_id = 0;
 public:
+  std::vector<tri_t> tris;
   MyRW() {};
   void rd(Storage storage, std::string_view key, Record *rec) {
     tri_t tri{storage, std::string(key), rec};

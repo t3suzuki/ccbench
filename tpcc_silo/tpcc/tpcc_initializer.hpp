@@ -47,22 +47,43 @@ void db_insert_raw(Storage st, std::string_view key, HeapObject&& val)
 }
 
 
+using shuffle_map_t = std::vector<uint64_t>;
+  
+shuffle_map_t
+init_shuffle_map(uint64_t n)
+{
+  shuffle_map_t shuffle_map(n);
+  for (uint64_t i=0; i<n; i++) {
+    shuffle_map[i] = i;
+  }
+  for (uint64_t i=n-1; i>0; i--) {
+    uint64_t j = random() % i;
+    uint64_t tmp = shuffle_map[j];
+    shuffle_map[j] = shuffle_map[i];
+    shuffle_map[i] = tmp;
+  }
+  return shuffle_map;
+}
+
 //CREATE Item
 void load_item() {
 
   struct S {
     static void work(std::uint32_t i_id_start, std::uint32_t i_id_end, const IsOriginal& is_original) {
+      shuffle_map_t shuffle_map = init_shuffle_map(i_id_end - i_id_start + 1);
       for (std::uint32_t i_id = i_id_start; i_id <= i_id_end; ++i_id) {
-        assert(i_id != 0); // 1-origin
+	//uint32_t j_id = i_id;
+	uint32_t j_id = shuffle_map[i_id - i_id_start] + i_id_start;
+        assert(j_id != 0); // 1-origin
         HeapObject obj;
         obj.allocate<TPCC::Item>();
         TPCC::Item& ite = obj.ref();
-        ite.I_ID = i_id;
+        ite.I_ID = j_id;
         ite.I_IM_ID = random_int(1, 10000);
         random_alpha_string(14, 24, ite.I_NAME);
         ite.I_PRICE = random_double(100, 10000, 100);
         std::size_t dataLen = random_alpha_string(26, 50, ite.I_DATA);
-        if (is_original[i_id - 1]) make_original(ite.I_DATA, dataLen);
+        if (is_original[j_id - 1]) make_original(ite.I_DATA, dataLen);
 #ifdef DEBUG
         if(i<3)std::cout<<"I_ID:"<<ite.I_ID<<"\tI_IM_ID:"<<ite.I_IM_ID<<"\tI_NAME:"<<ite.I_NAME<<"\tI_PRICE:"<<ite.I_PRICE<<"\tI_DATA:"<<ite.I_DATA<<std::endl;
 #endif
@@ -91,9 +112,9 @@ void load_item() {
   }
 #else
   // single threaded.
-  //::printf("load item...\n");
+  ::printf("load item...\n");
   S::work(1, MAX_ITEMS, is_original);
-  //::printf("load item done\n");
+  ::printf("load item done\n");
 #endif
 }
 
