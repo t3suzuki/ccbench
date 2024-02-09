@@ -408,12 +408,12 @@ public:
   
     if (found) {
       value_ptr = lp.value();
-#if 1
+#if 0
       for (int ii=0; ii<VAL_SIZE+8; ii+=64) {
 	::prefetch((char *)value_ptr + ii);
       }
 #else
-      const int pref_sz = std::min(VAL_SIZE+8, 256);
+      const int pref_sz = std::min(VAL_SIZE+8, 128);
       for (int ii=0; ii<pref_sz; ii+=64) {
 	::prefetch((char *)value_ptr + ii);
       }

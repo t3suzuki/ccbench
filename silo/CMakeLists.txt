@@ -104,7 +104,7 @@ endif ()
 if (DEFINED VAL_SIZE)
     add_definitions(-DVAL_SIZE=${VAL_SIZE})
 else ()
-    add_definitions(-DVAL_SIZE=4)
+    add_definitions(-DVAL_SIZE=64)
 endif ()
 
 if (DEFINED WAL)

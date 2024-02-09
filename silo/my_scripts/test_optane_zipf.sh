@@ -8,4 +8,5 @@ source run.sh silo_original
 source run.sh silo_dax
 source run_coro.sh corobase_dax
 source run_coro.sh ptx_dax
+source run_coro.sh ptx
 
